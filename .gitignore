@@ -1,0 +1,27 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch checkpoints, weights and outputs
+checkpoints/
+output/
+*.pt
+*.bin
+*.pth
+*.onnx
+*.safetensors
+
+# Logs
+logs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

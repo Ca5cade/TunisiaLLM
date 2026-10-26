@@ -1,0 +1,39 @@
+{
+  "stats": {
+    "atakaboudi/Dialect_of_Tunisia-Work_Collection": {
+      "raw_docs": 1000,
+      "clean_docs": 21,
+      "est_tokens": 384
+    },
+    "khaled123/Tunisian_Dialectic_English_Derja": {
+      "raw_docs": 1000,
+      "clean_docs": 22,
+      "est_tokens": 398
+    },
+    "arbml/Tunisian_Dialect_Corpus": {
+      "raw_docs": 1000,
+      "clean_docs": 23,
+      "est_tokens": 414
+    },
+    "wikipedia_ar": {
+      "raw_docs": 120,
+      "clean_docs": 6,
+      "est_tokens": 181
+    },
+    "wikipedia_fr": {
+      "raw_docs": 120,
+      "clean_docs": 0,
+      "est_tokens": 0
+    },
+    "wikipedia_en": {
+      "raw_docs": 120,
+      "clean_docs": 1,
+      "est_tokens": 33
+    }
+  },
+  "total_tokens_est": 1410,
+  "tunisian_tokens_est": 1196,
+  "tunisian_ratio": 84.822695035461,
+  "train_docs_count": 68,
+  "val_docs_count": 5
+}

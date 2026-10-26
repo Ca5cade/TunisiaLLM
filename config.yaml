@@ -1,0 +1,177 @@
+# ==============================================================================
+# TunisiaLLM - Unified Configuration File
+# Optimized for Kaggle Notebooks (2x T4 16GB, 12h session limit)
+# ==============================================================================
+
+# Global Settings
+seed: 42
+smoke_test: false  # When true, runs tiny quick run (1M tokens, 200 steps)
+
+# Filesystem Paths (Defaults configured for Kaggle, auto-falls back to local)
+paths:
+  data_dir: "data"                         # Local or /kaggle/working/data
+  output_dir: "output"                     # Local or /kaggle/working/output
+  checkpoint_dir: "checkpoints"           # Local or /kaggle/working/checkpoints
+  tokenizer_path: "tokenizer.json"         # Byte-level BPE tokenizer file
+  sft_data_dir: "sft_data"                 # SFT JSONL & tokenized dataset dir
+  kaggle_working_dir: "/kaggle/working"   # Root Kaggle output path
+  log_dir: "logs"                          # Training logs
+
+# 01_data_prep Settings
+data:
+  # HuggingFace Datasets for Tunisian Derja
+  tunisian_datasets:
+    - name: "atakaboudi/Dialect_of_Tunisia-Work_Collection"
+      split: "train"
+      text_column: "text"
+    - name: "khaled123/Tunisian_Dialectic_English_Derja"
+      split: "train"
+      text_column: "derja"
+    - name: "arbml/Tunisian_Dialect_Corpus"
+      split: "train"
+      text_column: "text"
+
+  # General language mix (Wikipedia small subsets)
+  wikipedia:
+    enabled: true
+    languages: ["ar", "fr", "en"]
+    samples_per_lang: 15000       # Kept balanced so Tunisian is ~45% of tokens
+
+  target_tunisian_ratio: 0.45    # Target proportion of Tunisian Derja tokens
+  val_ratio: 0.01                # 1% held-out validation set
+  min_char_len: 15               # Drop lines with fewer chars
+  max_char_len: 15000            # Truncate / split overly long documents
+  min_words: 3                   # Drop lines with fewer whitespace-separated words
+  
+  # Deduplication
+  dedup:
+    exact: true                  # Exact hash deduplication
+    minhash: true                # Near-duplicate MinHash filtering
+    minhash_threshold: 0.85      # Jaccard similarity threshold for near-duplicates
+    minhash_num_perm: 64         # Number of hash permutations
+    ngram_size: 5                # Character n-gram size for MinHash
+
+  # Sharding
+  tokens_per_shard: 5000000      # 5M uint16 tokens per .bin shard (~10MB/shard)
+  smoke_test_tokens: 1000000     # 1M tokens total for smoke test
+
+# 02_tokenizer Settings
+tokenizer:
+  vocab_size: 16384              # 16K vocab: compact, fast embeddings, low memory
+  min_frequency: 2
+  special_tokens:
+    pad: "<pad>"
+    bos: "<bos>"
+    eos: "<eos>"
+    user: "<|user|>"
+    assistant: "<|assistant|>"
+    system: "<|system|>"
+    tool_call_start: "<tool_call>"
+    tool_call_end: "</tool_call>"
+    tool_result_start: "<tool_result>"
+    tool_result_end: "</tool_result>"
+
+# 03_model Architecture Settings
+model:
+  preset: "80M"                  # Default: "80M" (Options: "30M", "80M", "125M")
+  max_seq_len: 1024              # Context length
+  vocab_size: 16384              # Matches tokenizer
+  tie_word_embeddings: true      # Tie lm_head to tok_embeddings (saves ~12.5M params)
+  norm_eps: 1.0e-5               # RMSNorm epsilon
+  rope_theta: 10000.0            # RoPE base frequency
+
+  # Presets definitions:
+  presets:
+    "30M":
+      dim: 448
+      n_layers: 8
+      n_heads: 7
+      n_kv_heads: 1              # GQA
+      hidden_dim: 1408           # SwiGLU hidden dim
+    "80M":
+      dim: 672
+      n_layers: 12
+      n_heads: 12
+      n_kv_heads: 4              # GQA
+      hidden_dim: 2176           # SwiGLU hidden dim
+    "125M":
+      dim: 768
+      n_layers: 14
+      n_heads: 12
+      n_kv_heads: 4              # GQA
+      hidden_dim: 2688           # SwiGLU hidden dim
+
+# 04_pretrain Training Settings
+pretrain:
+  batch_size: 32                 # Per GPU batch size (32 * 2 GPUs = 64 per forward)
+  gradient_accumulation_steps: 4 # Effective batch size = 64 * 4 = 256 seqs (262k tokens)
+  learning_rate: 6.0e-4          # Peak learning rate
+  min_learning_rate: 6.0e-5      # 10% of peak
+  warmup_steps: 1000             # Warmup steps
+  max_steps: 40000               # Total pretraining steps (~10B tokens max)
+  weight_decay: 0.1
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_eps: 1.0e-8
+  grad_clip: 1.0
+  fp16: true                     # fp16 autocast + GradScaler (optimal for T4)
+  compile: false                 # PyTorch 2.0 torch.compile (optional on T4)
+
+  # Checkpointing & Graceful Exit
+  save_interval_mins: 20         # Save full checkpoint every 20 minutes
+  eval_interval_steps: 250       # Evaluate validation loss
+  sample_interval_steps: 500     # Generate text samples during training
+  max_session_hours: 11.0        # Gracefully stop & save before Kaggle 12h limit
+  keep_last_n_checkpoints: 3     # Manage disk space
+
+  # Smoke test overrides
+  smoke_test:
+    max_steps: 5
+    warmup_steps: 2
+    eval_interval_steps: 5
+    sample_interval_steps: 5
+    batch_size: 2
+    gradient_accumulation_steps: 1
+    max_seq_len: 64
+
+# 05_make_sft_data Settings
+sft_data:
+  num_samples: 150000            # Total chat dialogues to generate
+  val_samples: 2000
+  categories:
+    derja_casual: 0.35           # Casual greetings, smalltalk, daily life in Derja
+    derja_qa: 0.30               # Real Q&A / dialogue from corpora
+    math_tools: 0.15             # Math questions emitting <tool_call>calc:...
+    search_tools: 0.12           # Factual questions emitting <tool_call>search:...
+    refusals: 0.08               # "I don't know" / polite refusals
+  smoke_test_samples: 1000
+
+# 06_sft Training Settings
+sft:
+  batch_size: 16
+  gradient_accumulation_steps: 4
+  learning_rate: 3.5e-5          # Low learning rate for instruction tuning
+  min_learning_rate: 3.5e-6
+  epochs: 3
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  grad_clip: 1.0
+  fp16: true
+  save_interval_mins: 20
+  eval_interval_steps: 100
+  max_session_hours: 11.0
+  smoke_test:
+    epochs: 1
+    max_steps: 5
+    batch_size: 4
+    gradient_accumulation_steps: 1
+    eval_interval_steps: 5
+
+# 07_inference Settings
+inference:
+  temperature: 0.7
+  top_p: 0.9
+  repetition_penalty: 1.15
+  max_new_tokens: 256
+  default_device: "cuda"         # "cuda" or "cpu"
+  safe_calc_timeout_secs: 2.0
