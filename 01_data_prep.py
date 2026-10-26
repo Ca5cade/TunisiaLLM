@@ -112,35 +112,37 @@ def quality_filter(text: str, min_chars: int = 15, max_chars: int = 15000, min_w
 class MinHashDeduplicator:
     """
     Self-contained pure-Python/NumPy MinHash LSH deduplicator.
-    Eliminates near-duplicate documents (e.g. slight rephrasings, copy-pastes).
+    Eliminates exact and near-duplicate documents.
     """
-    def __init__(self, num_perm: int = 64, threshold: float = 0.85, ngram_size: int = 5, seed: int = 42):
+    def __init__(self, num_perm: int = 64, threshold: float = 0.85, ngram_size: int = 5, use_minhash: bool = False, seed: int = 42):
         self.num_perm = num_perm
         self.threshold = threshold
         self.ngram_size = ngram_size
+        self.use_minhash = use_minhash
         self.seen_exact: Set[int] = set()
 
-        rng = np.random.RandomState(seed)
-        # Random linear hash parameters: (a * x + b) % p
-        self.large_prime = 2147483647  # 2^31 - 1
-        self.a = rng.randint(1, self.large_prime - 1, size=num_perm, dtype=np.int64)
-        self.b = rng.randint(0, self.large_prime - 1, size=num_perm, dtype=np.int64)
+        if self.use_minhash:
+            rng = np.random.RandomState(seed)
+            # Random linear hash parameters: (a * x + b) % p
+            self.large_prime = 2147483647  # 2^31 - 1
+            self.a = rng.randint(1, self.large_prime - 1, size=num_perm, dtype=np.int64)
+            self.b = rng.randint(0, self.large_prime - 1, size=num_perm, dtype=np.int64)
 
-        # LSH index: bucket bands
-        self.num_bands = 8
-        self.rows_per_band = num_perm // self.num_bands
-        self.buckets = [defaultdict(list) for _ in range(self.num_bands)]
-        self.minhashes: List[np.ndarray] = []
+            # LSH index: bucket bands
+            self.num_bands = 8
+            self.rows_per_band = num_perm // self.num_bands
+            self.buckets = [defaultdict(list) for _ in range(self.num_bands)]
+            self.minhashes: List[np.ndarray] = []
 
     def _get_shingles(self, text: str) -> Set[int]:
-        """Extract character n-grams and hash to 32-bit integers."""
+        """Extract word shingles (capped to 3000 chars) and hash to 32-bit integers."""
         shingles = set()
-        cleaned = text.lower()
-        if len(cleaned) < self.ngram_size:
-            shingles.add(abs(hash(cleaned)) % self.large_prime)
+        words = text.lower()[:3000].split()
+        if len(words) < 3:
+            shingles.add(abs(hash(" ".join(words))) % self.large_prime)
             return shingles
-        for i in range(len(cleaned) - self.ngram_size + 1):
-            shingle = cleaned[i:i + self.ngram_size]
+        for i in range(len(words) - 2):
+            shingle = f"{words[i]} {words[i+1]} {words[i+2]}"
             shingles.add(abs(hash(shingle)) % self.large_prime)
         return shingles
 
@@ -155,10 +157,14 @@ class MinHashDeduplicator:
 
     def is_duplicate(self, text: str) -> bool:
         """Return True if document is an exact duplicate or near-duplicate."""
-        # 1. Exact hash check
+        # 1. Exact hash check (lightning fast MD5)
         exact_h = int(hashlib.md5(text.encode("utf-8")).hexdigest()[:16], 16)
         if exact_h in self.seen_exact:
             return True
+
+        if not self.use_minhash:
+            self.seen_exact.add(exact_h)
+            return False
 
         # 2. MinHash signature
         shingles = self._get_shingles(text)
@@ -410,10 +416,12 @@ def run_data_prep(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = N
     all_corpora = {**tunisian_corpora, **wiki_corpora}
 
     # 2. Clean & Deduplicate
+    use_minhash = cfg["data"]["dedup"].get("minhash", False)
     deduplicator = MinHashDeduplicator(
-        num_perm=cfg["data"]["dedup"]["minhash_num_perm"],
-        threshold=cfg["data"]["dedup"]["minhash_threshold"],
-        ngram_size=cfg["data"]["dedup"]["ngram_size"],
+        num_perm=cfg["data"]["dedup"].get("minhash_num_perm", 64),
+        threshold=cfg["data"]["dedup"].get("minhash_threshold", 0.85),
+        ngram_size=cfg["data"]["dedup"].get("ngram_size", 5),
+        use_minhash=use_minhash,
         seed=cfg.get("seed", 42)
     )
 
@@ -423,9 +431,16 @@ def run_data_prep(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = N
     total_tokens_est = 0
     tunisian_tokens_est = 0
 
+    mode_str = "Exact MD5 + MinHash LSH" if use_minhash else "Exact MD5 (Fast)"
     print("\n" + "=" * 80)
-    print("Cleaning, Normalizing, and Deduplicating (Exact + MinHash Near-Dup)...")
+    print(f"Cleaning, Normalizing, and Deduplicating ({mode_str})...")
     print("=" * 80)
+
+    try:
+        from tqdm import tqdm
+        has_tqdm = True
+    except ImportError:
+        has_tqdm = False
 
     for source_name, raw_docs in all_corpora.items():
         is_tunisian = source_name in tunisian_corpora
@@ -433,7 +448,8 @@ def run_data_prep(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = N
         cleaned_docs = []
         source_tokens = 0
 
-        for doc in raw_docs:
+        doc_iter = tqdm(raw_docs, desc=f"  [*] {source_name[:35]}", total=len(raw_docs)) if has_tqdm else raw_docs
+        for doc in doc_iter:
             norm = normalize_text(doc)
             if not quality_filter(
                 norm,
@@ -444,7 +460,7 @@ def run_data_prep(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = N
                 continue
 
             # Deduplication
-            if cfg["data"]["dedup"].get("exact", True) or cfg["data"]["dedup"].get("minhash", True):
+            if cfg["data"]["dedup"].get("exact", True) or use_minhash:
                 if deduplicator.is_duplicate(norm):
                     continue
 

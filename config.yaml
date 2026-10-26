@@ -45,8 +45,8 @@ data:
   
   # Deduplication
   dedup:
-    exact: true                  # Exact hash deduplication
-    minhash: true                # Near-duplicate MinHash filtering
+    exact: true                  # Exact hash deduplication (very fast, MD5)
+    minhash: false               # Near-duplicate MinHash filtering (set true only if needed)
     minhash_threshold: 0.85      # Jaccard similarity threshold for near-duplicates
     minhash_num_perm: 64         # Number of hash permutations
     ngram_size: 5                # Character n-gram size for MinHash
