@@ -103,8 +103,8 @@ model:
 
 # 04_pretrain Training Settings
 pretrain:
-  batch_size: 32                 # Per GPU batch size (32 * 2 GPUs = 64 per forward)
-  gradient_accumulation_steps: 4 # Effective batch size = 64 * 4 = 256 seqs (262k tokens)
+  batch_size: 8                  # Per-GPU micro batch size (optimal for 16GB T4 VRAM)
+  gradient_accumulation_steps: 16 # Effective batch size = 8 * 16 = 128 seqs (131,072 tokens)
   learning_rate: 6.0e-4          # Peak learning rate
   min_learning_rate: 6.0e-5      # 10% of peak
   warmup_steps: 1000             # Warmup steps
@@ -116,6 +116,7 @@ pretrain:
   grad_clip: 1.0
   fp16: true                     # fp16 autocast + GradScaler (optimal for T4)
   compile: false                 # PyTorch 2.0 torch.compile (optional on T4)
+  gradient_checkpointing: false  # Set true to trade ~20% speed for 4x VRAM savings
 
   # Checkpointing & Graceful Exit
   save_interval_mins: 20         # Save full checkpoint every 20 minutes

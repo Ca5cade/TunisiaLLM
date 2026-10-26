@@ -13,6 +13,10 @@ Features:
 
 import os
 import sys
+
+# Optimize PyTorch CUDA memory allocator against fragmentation
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import glob
 import time
 import math
@@ -298,6 +302,7 @@ def train_pretrain(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = 
         vocab_size=cfg["tokenizer"]["vocab_size"],
         max_seq_len=seq_len
     )
+    model_config.gradient_checkpointing = pt_cfg.get("gradient_checkpointing", False)
 
     model = TunisiaLLM(model_config).to(device)
     raw_model = model

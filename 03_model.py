@@ -33,6 +33,7 @@ class ModelConfig:
     norm_eps: float = 1e-5
     rope_theta: float = 10000.0
     tie_word_embeddings: bool = True
+    gradient_checkpointing: bool = False
 
     @classmethod
     def from_preset(cls, preset_name: str = "80M", vocab_size: int = 16384, max_seq_len: int = 1024) -> "ModelConfig":
@@ -72,7 +73,8 @@ class ModelConfig:
             hidden_dim=cfg_dict["hidden_dim"],
             max_seq_len=max_seq_len,
             vocab_size=vocab_size,
-            tie_word_embeddings=True
+            tie_word_embeddings=True,
+            gradient_checkpointing=False
         )
 
 
@@ -373,13 +375,24 @@ class TunisiaLLM(nn.Module):
 
         # Pass through transformer layers
         for layer in self.layers:
-            h = layer(
-                h,
-                start_pos=start_pos,
-                freqs_cis=freqs_cis,
-                mask=mask,
-                use_cache=use_cache
-            )
+            if self.training and getattr(self.config, "gradient_checkpointing", False) and not use_cache:
+                h = torch.utils.checkpoint.checkpoint(
+                    layer,
+                    h,
+                    start_pos,
+                    freqs_cis,
+                    mask,
+                    use_cache,
+                    use_reentrant=False
+                )
+            else:
+                h = layer(
+                    h,
+                    start_pos=start_pos,
+                    freqs_cis=freqs_cis,
+                    mask=mask,
+                    use_cache=use_cache
+                )
 
         h = self.norm(h)
         logits = self.lm_head(h)
