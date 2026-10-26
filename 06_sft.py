@@ -83,8 +83,10 @@ def evaluate_sft_validation(
     for inputs, labels in val_loader:
         inputs = inputs.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
+        shift_inputs = inputs[:, :-1].contiguous()
+        shift_labels = labels[:, 1:].contiguous()
         with torch.amp.autocast(device_type="cuda" if device.type == "cuda" else "cpu", dtype=torch.float16, enabled=use_fp16):
-            _, loss = model(inputs, targets=labels)
+            _, loss = model(shift_inputs, targets=shift_labels)
         if loss is not None and not torch.isnan(loss):
             total_loss += loss.item()
             total_batches += 1
@@ -150,7 +152,7 @@ def sample_sft_chat(
 # SFT Training Pipeline
 # ==============================================================================
 
-def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None) -> None:
+def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None, fresh: bool = False) -> None:
     """Run Supervised Fine-Tuning."""
     cfg = load_config(cfg_path, smoke_test_override=smoke_test)
     is_smoke = cfg.get("smoke_test", False)
@@ -257,7 +259,7 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None)
     start_step = 0
     best_val_loss = float("inf")
 
-    if os.path.isfile(sft_latest_ckpt):
+    if not fresh and os.path.isfile(sft_latest_ckpt):
         if master_process:
             print(f"[*] Resuming from ongoing SFT checkpoint: {sft_latest_ckpt}")
         ckpt = torch.load(sft_latest_ckpt, map_location=device)
@@ -330,6 +332,8 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None)
         for batch_idx, (inputs, labels) in enumerate(train_loader):
             inputs = inputs.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
+            shift_inputs = inputs[:, :-1].contiguous()
+            shift_labels = labels[:, 1:].contiguous()
 
             if ddp and (micro_step % grad_accum_steps != grad_accum_steps - 1):
                 ctx = model.no_sync()
@@ -338,7 +342,7 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None)
 
             with ctx:
                 with torch.amp.autocast(device_type="cuda" if device.type == "cuda" else "cpu", dtype=torch.float16, enabled=use_fp16):
-                    _, loss = model(inputs, targets=labels)
+                    _, loss = model(shift_inputs, targets=shift_labels)
                     loss = loss / grad_accum_steps
                 scaler.scale(loss).backward()
                 accum_loss += loss.item()
@@ -463,6 +467,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TunisiaLLM SFT Training")
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--smoke-test", action="store_true", help="Run tiny smoke test (quick verification)")
+    parser.add_argument("--fresh", action="store_true", help="Start SFT fresh from pretrained checkpoint_best.pt")
     args = parser.parse_args()
 
-    train_sft(args.config, smoke_test=args.smoke_test if args.smoke_test else None)
+    train_sft(args.config, smoke_test=args.smoke_test if args.smoke_test else None, fresh=args.fresh)
