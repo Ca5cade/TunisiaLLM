@@ -153,12 +153,13 @@ sft:
   gradient_accumulation_steps: 4
   learning_rate: 3.5e-5          # Low learning rate for instruction tuning
   min_learning_rate: 3.5e-6
-  epochs: 3
+  epochs: 1                      # 1 epoch is standard for SFT (prevents memorization)
+  max_steps: 1000                # ~1000 steps (~25-30 mins) is plenty for instruction tuning
   warmup_ratio: 0.05
   weight_decay: 0.01
   grad_clip: 1.0
   fp16: true
-  save_interval_mins: 20
+  save_interval_mins: 15
   eval_interval_steps: 100
   max_session_hours: 11.0
   smoke_test:

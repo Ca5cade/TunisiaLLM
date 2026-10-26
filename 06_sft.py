@@ -229,6 +229,9 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None)
     )
 
     total_steps = len(train_loader) * epochs // grad_accum_steps
+    max_steps_cfg = smoke_sft_cfg.get("max_steps", sft_cfg.get("max_steps", None))
+    if max_steps_cfg:
+        total_steps = min(total_steps, max_steps_cfg)
     warmup_steps = int(total_steps * sft_cfg.get("warmup_ratio", 0.05))
 
     # 3. Model Initialization
@@ -431,12 +434,12 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None)
                         dist.destroy_process_group()
                     sys.exit(0)
 
-                # Check early stop for smoke test
-                smoke_max_steps = smoke_sft_cfg.get("max_steps", None)
-                if smoke_max_steps is not None and global_step >= smoke_max_steps:
-                    print(f"\n[+] Smoke test max steps ({smoke_max_steps}) reached. Finishing...")
+                # Check early stop when max_steps is reached
+                if max_steps_cfg is not None and global_step >= max_steps_cfg:
+                    if master_process:
+                        print(f"\n[+] SFT max steps ({max_steps_cfg}) reached. Finishing successfully...")
                     break
-        if smoke_max_steps is not None and global_step >= smoke_max_steps:
+        if max_steps_cfg is not None and global_step >= max_steps_cfg:
             break
 
     if master_process:
