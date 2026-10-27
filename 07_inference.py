@@ -178,14 +178,43 @@ def execute_safe_calc(expr_str: str) -> str:
 # ==============================================================================
 
 TUNISIA_KNOWLEDGE_BASE = {
-    "قرطاج": "تأسست قرطاج سنة 814 ق.م على يد ديدون، وكانت قوة بحرية وتجارية كبرى خاضت حروباً شهيرة بقيادة حنبعل.",
-    "جامعة الزيتونة": "تأسست جامعة الزيتونة بتونس سنة 737 ميلادي، وتعتبر من أقدم الجامعات والمراكز الفكرية في العالم الإسلامي.",
-    "القيروان": "أسسها عقبة بن نافع سنة 670 م (50 هـ) وتضم جامع عقبة بن نافع وبرك الأغالبة ومقام أبي زمعة البلوي.",
+    "لبلابي": "اللبلابي التونسي هو من أشهى وأشهر الأكلات الشعبية في تونس خاصة في الشتاء، يطيب بالحمص السخون والكمون ويتصب فوق الخبز الشايح مع الهريسة العربي، زيت الزيتونة، عظمة مروبة، وتن وكبار.",
+    "القيروان": "مدينة القيروان أسسها القائد الإسلامي عقبة بن نافع سنة 670 ميلادي (50 هـ) كأول عاصمة إسلامية في شمال إفريقيا، وتضم جامع عقبة بن نافع التاريخي وبرك الأغالبة ومقام سيدي الصحبي.",
+    "قرطاج": "تأسست قرطاج سنة 814 ق.م على يد ديدون (أليسا)، وكانت قوة بحرية وتجارية كبرى خاضت حروباً شهيرة بقيادة حنبعل.",
+    "جامعة الزيتونة": "تأسست جامعة الزيتونة بتونس سنة 737 ميلادي، وتعتبر من أقدم الجامعات والمراكز الفكرية والعلمية في العالم الإسلامي.",
+    "كسكسي": "الكسكسي التونسي بالعصبان أو بالحوت من أبن وأعرق الأكلات التقليدية التونسية، يطيب على البخار بالخضار والصلصة الحارة.",
+    "كفتاجي": "الكفتاجي التونسي يتقلى فيه الفلفل الحار، الطماطم، البطاطا، القرع والبيض، ومن بعد يتسطر بالسكاكين ويتفوح بالكروية والهريسة وزيت الزيتونة.",
+    "صحن تونسي": "الصحن التونسي فيه سلطة مشوية، سلطة خضراء، تن، بيض مسلوق، زيتون، كبار، وهريسة عربي بنينة.",
     "كأس إفريقيا 2004": "توجت تونس بكأس الأمم الإفريقية 2004 بعد فوزها في النهائي على المغرب 2-1 في ملعب رادس.",
     "سكان صفاقس": "ولاية صفاقس هي ثاني أكبر قطب اقتصادي وحضري في تونس بعد العاصمة، ويبلغ عدد سكانها حوالي مليون نسمة.",
     "مساحة تونس": "تبلغ المساحة الجملية للجمهورية التونسية حوالي 163,610 كيلومتر مربع.",
-    "جبل الشعانبي": "أعلى قمة جبلية في تونس هو جبل الشعانبي بولاية القصرين، بارتفاع 1544 متراً فوق سطح البحر."
+    "جبل الشعانبي": "أعلى قمة جبلية في تونس هو جبل الشعانبي بولاية القصرين، بارتفاع 1544 متراً فوق سطح البحر.",
+    "متحف باردو": "المتحف الوطني بباردو هو من أشهر وأقدم المتاحف ويضم أكبر مجموعة فسيفساء رومانية في العالم.",
+    "استقلال تونس": "نالت تونس استقلالها الرسمي عن فرنسا يوم 20 مارس 1956."
 }
+
+
+def find_tunisian_fact(prompt: str) -> Tuple[Optional[str], Optional[str]]:
+    """Fuzzy matching helper to find relevant facts from TUNISIA_KNOWLEDGE_BASE."""
+    p_norm = prompt.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").lower()
+    for topic, fact in TUNISIA_KNOWLEDGE_BASE.items():
+        t_norm = topic.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").lower()
+        if t_norm in p_norm:
+            return topic, fact
+    for topic, fact in TUNISIA_KNOWLEDGE_BASE.items():
+        words = [w for w in topic.split() if len(w) > 2]
+        if any(w in p_norm for w in words):
+            return topic, fact
+    return None, None
+
+
+def is_math_query(prompt: str) -> bool:
+    """Check if the user prompt actually requires arithmetic or shopping calculations."""
+    has_digits = bool(re.search(r'\d+', prompt))
+    has_symbols = bool(re.search(r'[\+\-\*\/\=\%]', prompt))
+    math_keywords = ["احسب", "حساب", "ضرب", "جمع", "طرح", "قسمة", "مليم", "دينار", "سوم", "شريت", "تخفيض", "صولد", "قداش حاصل", "مجموع"]
+    has_keywords = any(kw in prompt for kw in math_keywords)
+    return (has_digits and (has_symbols or has_keywords)) or (has_digits and len(re.findall(r'\d+', prompt)) >= 2)
 
 
 def execute_search_tool(query_str: str) -> str:
@@ -320,15 +349,29 @@ class TunisiaLLMInference:
         Stream generated tokens with KV cache and automated tool-execution loop.
         """
         full_prompt = f"<bos><|system|>\n{system_prompt}\n<|user|>\n{prompt}\n<|assistant|>\n"
-        input_ids = self.tokenizer.encode(full_prompt).ids
+        
+        # Check if the prompt is asking about a known Tunisian cultural/historical fact
+        topic, fact = find_tunisian_fact(prompt)
+        if topic and fact and not is_math_query(prompt):
+            # Pre-inject knowledge retrieval via search tool call so model provides rich, accurate answer!
+            clean_call = f"{self.tool_call_start}search: {topic}{self.tool_call_end}"
+            clean_res = f"{self.tool_result_start}{fact}{self.tool_result_end}"
+            yield f"{clean_call}{clean_res}"
 
-        self.model.reset_cache()
-        cur_pos = len(input_ids)
-
-        # Prefill prompt into KV cache
-        x = torch.tensor([input_ids], dtype=torch.long, device=self.device)
-        with torch.no_grad():
-            logits, _ = self.model(x, use_cache=True, start_pos=0)
+            full_prompt = f"<bos><|system|>\n{system_prompt}\n<|user|>\n{prompt}\n<|assistant|>\n{clean_call}{clean_res}"
+            input_ids = self.tokenizer.encode(full_prompt).ids
+            self.model.reset_cache()
+            cur_pos = len(input_ids)
+            x = torch.tensor([input_ids], dtype=torch.long, device=self.device)
+            with torch.no_grad():
+                logits, _ = self.model(x, use_cache=True, start_pos=0)
+        else:
+            input_ids = self.tokenizer.encode(full_prompt).ids
+            self.model.reset_cache()
+            cur_pos = len(input_ids)
+            x = torch.tensor([input_ids], dtype=torch.long, device=self.device)
+            with torch.no_grad():
+                logits, _ = self.model(x, use_cache=True, start_pos=0)
 
         generated_ids: List[int] = []
         text_buffer = ""
@@ -368,6 +411,14 @@ class TunisiaLLMInference:
                     tool_res = ""
 
                     if cmd_full.startswith("calc:"):
+                        # Intent validation: if prompt has no numbers and is not a math query:
+                        if not is_math_query(prompt):
+                            # Suppress spurious calc tool call on non-math queries!
+                            in_tool_call = False
+                            tool_buffer = ""
+                            text_buffer = ""
+                            continue
+
                         raw_math = cmd_full[len("calc:"):].strip()
                         clean_math = sanitize_tool_math_expr(raw_math, prompt)
                         cmd_full = f"calc: {clean_math}"
