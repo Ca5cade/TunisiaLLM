@@ -11,6 +11,7 @@ Features:
 
 import os
 import sys
+import re
 import ast
 import math
 import time
@@ -98,11 +99,39 @@ class SafeCalculator(ast.NodeVisitor):
         raise ValueError(f"AST node '{type(node).__name__}' is not allowed in safe math")
 
 
+def extract_math_subexpression(expr_str: str) -> Optional[str]:
+    """Extract clean arithmetic subexpression even when conversational text is mixed in."""
+    cleaned = expr_str.strip()
+    if cleaned.startswith("calc:"):
+        cleaned = cleaned[5:].strip()
+
+    # 1. Try directly first
+    try:
+        ast.parse(cleaned, mode='eval')
+        return cleaned
+    except Exception:
+        pass
+
+    # 2. Extract arithmetic candidates (digits, +, -, *, /, (, ), .)
+    matches = re.findall(r'[\d\.\s\+\-\*\/\(\)]+', cleaned)
+    candidates = [m.strip() for m in matches if any(c.isdigit() for c in m)]
+    for cand in candidates:
+        try:
+            ast.parse(cand, mode='eval')
+            return cand
+        except Exception:
+            continue
+    return None
+
+
 def execute_safe_calc(expr_str: str) -> str:
     """Safely evaluate arithmetic expression string and return formatted result."""
     try:
-        cleaned_expr = expr_str.strip()
-        tree = ast.parse(cleaned_expr, mode='eval')
+        math_cand = extract_math_subexpression(expr_str)
+        if not math_cand:
+            return "خطأ في الصيغة الحسابية"
+
+        tree = ast.parse(math_cand, mode='eval')
         calc = SafeCalculator()
         res = calc.visit(tree)
         if isinstance(res, float) and res.is_integer():
@@ -309,20 +338,17 @@ class TunisiaLLMInference:
 
                     if cmd_full.startswith("calc:"):
                         math_expr = cmd_full[len("calc:"):].strip()
-                        yield f"\n[🔧 جارٍ الحساب: {math_expr}]"
                         tool_res = execute_safe_calc(math_expr)
-                        yield f" -> النتيجة: {tool_res}\n"
                     elif cmd_full.startswith("search:"):
                         search_q = cmd_full[len("search:"):].strip()
-                        yield f"\n[🔍 جارٍ البحث: {search_q}]"
                         tool_res = execute_search_tool(search_q)
-                        yield f" -> النتيجة: {tool_res}\n"
                     else:
                         tool_res = "أمر غير معروف"
 
                     # Inject tool result into generation stream
                     tool_injection = f"{self.tool_result_start}{tool_res}{self.tool_result_end}"
                     inject_ids = self.tokenizer.encode(tool_injection).ids
+                    yield tool_injection
 
                     # Feed injected tokens through model to update KV cache
                     inject_tensor = torch.tensor([inject_ids], dtype=torch.long, device=self.device)

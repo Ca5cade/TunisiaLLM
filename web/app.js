@@ -216,8 +216,8 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/>/g, "&gt;");
 
         // Parse Tool Calls: <tool_call>...</tool_call> and results
-        const toolCallRegex = /&lt;tool_call&gt;([\s\S]*?)&lt;\/tool_call&gt;/g;
-        sanitized = sanitized.replace(toolCallRegex, (match, toolCall) => {
+        const pairedRegex = /&lt;tool_call&gt;([\s\S]*?)&lt;\/tool_call&gt;[\s\n]*&lt;tool_result&gt;([\s\S]*?)&lt;\/tool_result&gt;/g;
+        sanitized = sanitized.replace(pairedRegex, (match, toolCall, toolRes) => {
             return `
             <div class="tool-call-block">
                 <div class="tool-call-header">
@@ -226,12 +226,28 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 <div class="tool-call-body">
                     <div class="tool-call-input"><span class="k">&gt; </span>${toolCall.trim()}</div>
+                    <div class="tool-call-result">✓ نتيجة الأداة: ${toolRes.trim()}</div>
                 </div>
             </div>`;
         });
 
-        const toolResultRegex = /&lt;tool_result&gt;([\s\S]*?)&lt;\/tool_result&gt;/g;
-        sanitized = sanitized.replace(toolResultRegex, (match, toolResult) => {
+        const singleToolCallRegex = /&lt;tool_call&gt;([\s\S]*?)&lt;\/tool_call&gt;/g;
+        sanitized = sanitized.replace(singleToolCallRegex, (match, toolCall) => {
+            return `
+            <div class="tool-call-block">
+                <div class="tool-call-header">
+                    <span>⚡ تنفيذ أداة الحساب / البحث (Tool Execution)</span>
+                    <span>🔧 Tool Call</span>
+                </div>
+                <div class="tool-call-body">
+                    <div class="tool-call-input"><span class="k">&gt; </span>${toolCall.trim()}</div>
+                    <div class="tool-call-result" style="color: #FBBF24;">⏳ جارٍ الحساب...</div>
+                </div>
+            </div>`;
+        });
+
+        const singleToolResultRegex = /&lt;tool_result&gt;([\s\S]*?)&lt;\/tool_result&gt;/g;
+        sanitized = sanitized.replace(singleToolResultRegex, (match, toolResult) => {
             return `
             <div class="tool-call-block">
                 <div class="tool-call-body">
