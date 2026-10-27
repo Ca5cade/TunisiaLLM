@@ -185,7 +185,39 @@ def main():
     # Initialize Engine
     engine = TunisiaLLMInference(cfg, checkpoint_path=ckpt_path, device=args.device)
 
-    url = f"http://{args.host}:{args.port}"
+    import socket
+    import urllib.request
+
+    # Check if port is already running TunisiaLLM
+    def is_port_in_use(host: str, port: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.4)
+            return s.connect_ex((host, port)) == 0
+
+    selected_port = args.port
+    if is_port_in_use(args.host, selected_port):
+        # Test if it's already TunisiaLLM
+        try:
+            with urllib.request.urlopen(f"http://{args.host}:{selected_port}/api/status", timeout=1.0) as resp:
+                data = json.loads(resp.read().decode())
+                if data.get("preset") == "80M":
+                    print(f"\n[i] TunisiaLLM server is ALREADY active at http://{args.host}:{selected_port}!")
+                    print(f"[i] Checkpoint in use: {data.get('checkpoint_name')}")
+                    if not args.no_browser:
+                        webbrowser.open(f"http://{args.host}:{selected_port}")
+                    print("[i] Opened in browser. You can talk to the model now!\n")
+                    return
+        except Exception:
+            pass
+
+        # If it's a different application, find next free port
+        for p in range(args.port + 1, args.port + 15):
+            if not is_port_in_use(args.host, p):
+                print(f"[!] Port {args.port} is busy. Automatically switching to free port: {p}")
+                selected_port = p
+                break
+
+    url = f"http://{args.host}:{selected_port}"
     print("\n" + "=" * 80)
     print(f"[OK] TunisiaLLM UI ready at: {url}")
     print("=" * 80 + "\n")
@@ -198,7 +230,7 @@ def main():
         threading.Thread(target=open_browser, daemon=True).start()
 
     import uvicorn
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    uvicorn.run(app, host=args.host, port=selected_port, log_level="warning")
 
 
 if __name__ == "__main__":
