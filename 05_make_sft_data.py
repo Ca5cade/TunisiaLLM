@@ -150,13 +150,29 @@ def generate_math_tool_dialogue(rng: random.Random) -> Dict:
         ans_text = f"حاصل الضرب هو {res}."
 
     elif op == "shopping":
-        qty1 = rng.randint(2, 6)
-        price1 = rng.choice([250, 400, 800, 1500, 3200])
-        qty2 = rng.randint(1, 4)
-        price2 = rng.choice([600, 1200, 2500, 4500])
-        user_q = f"شريت {qty1} كعبات بـ {price1} مليم و {qty2} كعبات بـ {price2} مليم، قداش المجموع الكل؟"
-        expr = f"{qty1} * {price1} + {qty2} * {price2}"
-        res = qty1 * price1 + qty2 * price2
+        if rng.random() < 0.5:
+            # Single-item shopping / weight calculation
+            qty = rng.randint(2, 7)
+            price = rng.choice([500, 800, 1200, 1500, 1800, 2500, 3200])
+            unit = rng.choice(["كيلو", "كعبات", "باكوات"])
+            item = rng.choice(["طماطم", "بطاطا", "بصل", "تفاح", "غلة"])
+            user_q = rng.choice([
+                f"شريت {qty} {unit} {item}، سوم {unit} بـ {price} مليم، قداش يطيحو؟",
+                f"شريت {qty} {unit} بـ {price} مليم، قداش المجموع؟",
+                f"قداش سوم {qty} {unit} {item} الكيلو بـ {price} مليم؟"
+            ])
+            expr = f"{qty} * {price}"
+            res = qty * price
+        else:
+            # Two-item composite shopping
+            qty1 = rng.randint(2, 5)
+            price1 = rng.choice([250, 400, 800, 1500, 3200])
+            qty2 = rng.randint(1, 4)
+            price2 = rng.choice([600, 1200, 2500, 4500])
+            user_q = f"شريت {qty1} كعبات بـ {price1} مليم و {qty2} كعبات بـ {price2} مليم، قداش المجموع الكل؟"
+            expr = f"{qty1} * {price1} + {qty2} * {price2}"
+            res = qty1 * price1 + qty2 * price2
+
         dinar = res // 1000
         millimes = res % 1000
         ans_text = f"المجموع يطلع {res} مليم (يعني {dinar} دينارات و {millimes} مليم) يا غالي."
