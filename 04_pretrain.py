@@ -479,13 +479,13 @@ def train_pretrain(
             dt = now - last_log_time
             tps = (tokens_per_step * log_every) / max(dt, 1e-5)
             last_log_time = now
+            vram_str = f" | VRAM: {torch.cuda.max_memory_allocated() / (1024**3):.1f}GB" if torch.cuda.is_available() else ""
             print(
                 f"Step {step:05d}/{max_steps:05d} | "
                 f"Loss: {accum_loss:.4f} | "
                 f"PPL: {math.exp(min(accum_loss, 20.0)):.2f} | "
                 f"LR: {lr:.2e} | "
-                f"Norm: {grad_norm:.2f} | "
-                f"Throughput: {int(tps):,} tok/s | "
+                f"Throughput: {int(tps):,} tok/s{vram_str} | "
                 f"Elapsed: {format_time(now - session_start_time)}",
                 flush=True
             )

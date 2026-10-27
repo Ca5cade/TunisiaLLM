@@ -103,8 +103,8 @@ model:
 
 # 04_pretrain Training Settings
 pretrain:
-  batch_size: 16                 # Per-GPU micro batch size (optimal for 16GB T4 VRAM)
-  gradient_accumulation_steps: 8 # Effective batch size = 16 * 8 * 2 = 256 seqs (262,144 tokens)
+  batch_size: 32                 # Per-GPU micro batch size (maximizes ~12.5GB/15.6GB VRAM & Tensor Cores)
+  gradient_accumulation_steps: 4 # Effective batch size = 32 * 4 * 2 = 256 seqs (262,144 tokens)
   learning_rate: 6.0e-4          # Peak learning rate
   min_learning_rate: 6.0e-5      # 10% of peak (proper cosine annealing)
   warmup_steps: 500              # 500 warmup steps
@@ -116,7 +116,7 @@ pretrain:
   grad_clip: 1.0
   fp16: true                     # fp16 autocast + GradScaler (optimal for T4)
   compile: false                 # PyTorch 2.0 torch.compile (optional on T4)
-  gradient_checkpointing: false  # Not needed with 16GB VRAM; preserves peak throughput
+  gradient_checkpointing: false  # Disabled: 16GB VRAM has plenty of space for batch 32 without activation checkpointing
 
   # Checkpointing & Graceful Exit
   save_interval_mins: 20         # Save full checkpoint every 20 minutes
@@ -150,8 +150,8 @@ sft_data:
 
 # 06_sft Training Settings
 sft:
-  batch_size: 16
-  gradient_accumulation_steps: 4
+  batch_size: 32                 # Scaled to 32 (with 256 max_seq_len, fits easily and trains 2x faster)
+  gradient_accumulation_steps: 2 # Effective batch size = 32 * 2 * 2 = 128 seqs (32,768 tokens)
   learning_rate: 4.0e-5          # Optimal learning rate for instruction tuning
   min_learning_rate: 4.0e-6
   epochs: 1                      # 1 epoch is standard for SFT (prevents memorization)

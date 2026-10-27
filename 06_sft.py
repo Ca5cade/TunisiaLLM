@@ -374,11 +374,12 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
                 # Logging
                 log_every = 1 if is_smoke else 10
                 if master_process and (global_step % log_every == 0):
+                    vram_str = f" | VRAM: {torch.cuda.max_memory_allocated() / (1024**3):.1f}GB" if torch.cuda.is_available() else ""
                     print(
                         f"Epoch {epoch+1:02d}/{epochs:02d} | Step {global_step:04d}/{total_steps:04d} | "
                         f"Loss: {accum_loss:.4f} | "
                         f"PPL: {math.exp(min(accum_loss, 20.0)):.2f} | "
-                        f"LR: {lr:.2e} | Norm: {grad_norm:.2f} | "
+                        f"LR: {lr:.2e} | Norm: {grad_norm:.2f}{vram_str} | "
                         f"Elapsed: {format_time(now - session_start_time)}",
                         flush=True
                     )
