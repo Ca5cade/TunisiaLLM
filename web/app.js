@@ -255,15 +255,22 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================================
     // Core Send & Streaming Logic (SSE)
     // =========================================================================
+    let lastSendTimestamp = 0;
+
     async function sendMessage() {
+        const now = performance.now();
         if (isGenerating) {
-            // Cancel / Stop generation
+            // Protect against rapid double clicks: only cancel if > 500ms since generation started
+            if (now - lastSendTimestamp < 500) {
+                return;
+            }
             if (abortController) {
                 abortController.abort();
             }
             return;
         }
 
+        lastSendTimestamp = now;
         const text = chatInput.value.trim();
         if (!text) return;
 
