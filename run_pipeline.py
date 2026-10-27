@@ -30,6 +30,8 @@ sys.path.insert(0, REPO_ROOT)
 from utils import load_config, format_time, format_bytes
 
 
+os.environ.setdefault("PYTHONUNBUFFERED", "1")
+
 def log_banner(title: str, fill: str = "=") -> None:
     """Print an eye-catching stage header."""
     print("\n" + fill * 80)
@@ -43,12 +45,26 @@ def run_command(cmd: List[str], desc: str) -> None:
     print(f"Executing: {' '.join(cmd)}\n", flush=True)
 
     start_t = time.time()
-    ret = subprocess.run(cmd, cwd=REPO_ROOT)
+    proc = subprocess.Popen(
+        cmd,
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1
+    )
+
+    if proc.stdout is not None:
+        for line in iter(proc.stdout.readline, ""):
+            print(line, end="", flush=True)
+        proc.stdout.close()
+
+    return_code = proc.wait()
     elapsed = time.time() - start_t
 
-    if ret.returncode != 0:
-        print(f"\n[!] ERROR: {desc} failed with exit code {ret.returncode} after {format_time(elapsed)}.")
-        sys.exit(ret.returncode)
+    if return_code != 0:
+        print(f"\n[!] ERROR: {desc} failed with exit code {return_code} after {format_time(elapsed)}.")
+        sys.exit(return_code)
 
     print(f"\n[OK] {desc} completed successfully in {format_time(elapsed)}.\n", flush=True)
 
@@ -113,11 +129,13 @@ def main() -> None:
     cfg = load_config(args.config, smoke_test_override=args.smoke_test)
     num_gpus = get_gpu_info()
 
+    py_exec = [sys.executable, "-u"]
+
     # Determine execution runner (torchrun for multi-GPU, python for single)
     if num_gpus >= 2 and not args.smoke_test:
         runner_prefix = ["torchrun", f"--nproc_per_node={num_gpus}"]
     else:
-        runner_prefix = [sys.executable]
+        runner_prefix = list(py_exec)
 
     log_banner(f"TUNISIALLM 12-HOUR AUTONOMOUS TRAINING PIPELINE")
     print(f"Session Budget:      {args.total_hours:.1f} hours ({format_time(total_budget_secs)})")
@@ -129,7 +147,7 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # STAGE 1: Data Preparation
     # -------------------------------------------------------------------------
-    data_prep_cmd = [sys.executable, "01_data_prep.py", "--config", args.config]
+    data_prep_cmd = list(py_exec) + ["01_data_prep.py", "--config", args.config]
     if args.smoke_test:
         data_prep_cmd.append("--smoke-test")
     if args.force_prep:
@@ -139,7 +157,7 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # STAGE 2: Tokenizer Training & Sharding
     # -------------------------------------------------------------------------
-    tok_cmd = [sys.executable, "02_tokenizer.py", "--config", args.config]
+    tok_cmd = list(py_exec) + ["02_tokenizer.py", "--config", args.config]
     if args.smoke_test:
         tok_cmd.append("--smoke-test")
     if args.force_prep:
@@ -171,7 +189,7 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # STAGE 4: SFT Dataset Generation
     # -------------------------------------------------------------------------
-    sft_data_cmd = [sys.executable, "05_make_sft_data.py", "--config", args.config]
+    sft_data_cmd = list(py_exec) + ["05_make_sft_data.py", "--config", args.config]
     if args.smoke_test:
         sft_data_cmd.append("--smoke-test")
     run_command(sft_data_cmd, "Stage 4: SFT Chat & Tool Calling Dataset Synthesis")
@@ -187,7 +205,7 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # STAGE 6: Inference Benchmark & Verification
     # -------------------------------------------------------------------------
-    bench_cmd = [sys.executable, "07_inference.py", "--config", args.config, "--benchmark"]
+    bench_cmd = list(py_exec) + ["07_inference.py", "--config", args.config, "--benchmark"]
     run_command(bench_cmd, "Stage 6: Automated Inference & Tool Verification Benchmark")
 
     # -------------------------------------------------------------------------
