@@ -148,6 +148,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    btnSend.addEventListener("click", (e) => {
+        e.preventDefault();
+        sendMessage();
+    });
+
     // =========================================================================
     // Starter Prompts Click
     // =========================================================================
@@ -448,4 +453,5 @@ document.addEventListener("DOMContentLoaded", () => {
     // Initialize
     loadSavedSettings();
     checkModelStatus();
+    window.sendMessage = sendMessage;
 });
