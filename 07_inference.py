@@ -124,6 +124,36 @@ def extract_math_subexpression(expr_str: str) -> Optional[str]:
     return None
 
 
+def sanitize_tool_math_expr(expr_str: str, user_prompt: Optional[str] = None) -> str:
+    """
+    Sanitize math tool expression by stripping conversational text and
+    pruning hallucinated trailing arithmetic terms for single-item queries.
+    """
+    cleaned = expr_str.strip()
+    if cleaned.startswith("calc:"):
+        cleaned = cleaned[5:].strip()
+
+    # Extract clean arithmetic candidates
+    cand = extract_math_subexpression(cleaned)
+    if cand:
+        cleaned = cand
+
+    if user_prompt:
+        # Find all numbers in the user prompt (integers and floats)
+        prompt_nums = re.findall(r'\b\d+(?:\.\d+)?\b', user_prompt)
+        # If the user prompt describes a single-item question or simple 2-number problem
+        if len(prompt_nums) == 2:
+            q, p = prompt_nums[0], prompt_nums[1]
+            # Match quantity * price followed by spurious hallucinated addition/subtraction
+            # e.g., "3 * 1500 + 1500" -> "3 * 1500"
+            pat = rf'^\s*({q}\s*[\*xX]\s*{p}|{p}\s*[\*xX]\s*{q})\s*[\+\-].*$'
+            m = re.match(pat, cleaned)
+            if m:
+                cleaned = m.group(1).replace('x', '*').replace('X', '*').strip()
+
+    return cleaned
+
+
 def execute_safe_calc(expr_str: str) -> str:
     """Safely evaluate arithmetic expression string and return formatted result."""
     try:
@@ -304,6 +334,7 @@ class TunisiaLLMInference:
         text_buffer = ""
         in_tool_call = False
         tool_buffer = ""
+        tool_start_pos = cur_pos
 
         for step in range(max_new_tokens):
             last_logits = logits[:, -1, :].clone()
@@ -325,36 +356,40 @@ class TunisiaLLMInference:
             # Check for tool call tags
             if self.tool_call_start in text_buffer and not in_tool_call:
                 in_tool_call = True
+                tool_start_pos = cur_pos
                 tool_buffer = text_buffer.split(self.tool_call_start)[-1]
-                yield token_str
+                # Buffer tool tokens silently until tag closes to allow expression sanitization
             elif in_tool_call:
                 tool_buffer += token_str
-                yield token_str
 
                 if self.tool_call_end in tool_buffer:
-                    # Tool call is complete! Extract and execute tool
+                    # Tool call is complete! Extract, sanitize, and execute tool
                     cmd_full = tool_buffer.split(self.tool_call_end)[0].strip()
                     tool_res = ""
 
                     if cmd_full.startswith("calc:"):
-                        math_expr = cmd_full[len("calc:"):].strip()
-                        tool_res = execute_safe_calc(math_expr)
+                        raw_math = cmd_full[len("calc:"):].strip()
+                        clean_math = sanitize_tool_math_expr(raw_math, prompt)
+                        cmd_full = f"calc: {clean_math}"
+                        tool_res = execute_safe_calc(clean_math)
                     elif cmd_full.startswith("search:"):
                         search_q = cmd_full[len("search:"):].strip()
                         tool_res = execute_search_tool(search_q)
                     else:
                         tool_res = "أمر غير معروف"
 
-                    # Inject tool result into generation stream
-                    tool_injection = f"{self.tool_result_start}{tool_res}{self.tool_result_end}"
-                    inject_ids = self.tokenizer.encode(tool_injection).ids
-                    yield tool_injection
+                    # Yield the complete, sanitized tool call and result to frontend
+                    clean_call = f"{self.tool_call_start}{cmd_full}{self.tool_call_end}"
+                    clean_res = f"{self.tool_result_start}{tool_res}{self.tool_result_end}"
+                    yield f"{clean_call}{clean_res}"
 
-                    # Feed injected tokens through model to update KV cache
+                    # Feed clean tool call & result tokens into model to update KV cache cleanly
+                    clean_block = f"{clean_call}{clean_res}"
+                    inject_ids = self.tokenizer.encode(clean_block).ids
                     inject_tensor = torch.tensor([inject_ids], dtype=torch.long, device=self.device)
                     with torch.no_grad():
-                        logits, _ = self.model(inject_tensor, use_cache=True, start_pos=cur_pos)
-                    cur_pos += len(inject_ids)
+                        logits, _ = self.model(inject_tensor, use_cache=True, start_pos=tool_start_pos)
+                    cur_pos = tool_start_pos + len(inject_ids)
 
                     in_tool_call = False
                     tool_buffer = ""

@@ -179,7 +179,19 @@ def main():
     ckpt_path, ckpt_name = resolve_checkpoint(args.checkpoint)
     checkpoint_info = {"path": ckpt_path, "name": ckpt_name}
 
+    # Ensure matching 16k tokenizer is selected
+    tok_candidates = [
+        os.path.join(os.path.dirname(ckpt_path), "tokenizer.json"),
+        os.path.join(REPO_ROOT, "tunisiallm_model", "tokenizer.json"),
+        os.path.join(REPO_ROOT, "tokenizer.json")
+    ]
+    for tc in tok_candidates:
+        if os.path.isfile(tc) and os.path.getsize(tc) > 100000:
+            cfg["paths"]["tokenizer_path"] = tc
+            break
+
     print(f"[*] Checkpoint Selected: {ckpt_path} ({ckpt_name})")
+    print(f"[*] Tokenizer Selected:  {cfg['paths']['tokenizer_path']}")
     print(f"[*] Target Device:       {args.device}")
 
     # Initialize Engine
