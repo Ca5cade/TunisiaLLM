@@ -370,8 +370,11 @@ class TunisiaLLM(nn.Module):
         # Attention mask for caching or padding
         mask = None
         if seqlen > 1 and use_cache:
-            mask = torch.full((seqlen, seqlen), float("-inf"), device=tokens.device)
-            mask = torch.triu(mask, diagonal=1).type_as(h)
+            total_len = start_pos + seqlen
+            q_pos = torch.arange(start_pos, total_len, device=tokens.device).unsqueeze(1)
+            k_pos = torch.arange(total_len, device=tokens.device).unsqueeze(0)
+            mask = torch.zeros((seqlen, total_len), device=tokens.device)
+            mask = mask.masked_fill(q_pos < k_pos, float("-inf")).type_as(h)
 
         # Pass through transformer layers
         for layer in self.layers:
