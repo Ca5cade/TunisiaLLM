@@ -256,7 +256,12 @@ def evaluate_val_loss(
 # Pretraining Orchestrator
 # ==============================================================================
 
-def train_pretrain(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None) -> None:
+def train_pretrain(
+    cfg_path: Optional[str] = None,
+    smoke_test: Optional[bool] = None,
+    max_steps_override: Optional[int] = None,
+    max_session_hours_override: Optional[float] = None
+) -> None:
     """Main pretraining entry point."""
     cfg = load_config(cfg_path, smoke_test_override=smoke_test)
     is_smoke = cfg.get("smoke_test", False)
@@ -314,7 +319,11 @@ def train_pretrain(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = 
         model = torch.compile(model)
 
     if ddp:
-        model = DDP(model, device_ids=[local_rank])
+        model = DDP(model, device_ids=[local_rank], broadcast_buffers=False)
+        try:
+            model._set_static_graph()
+        except Exception:
+            pass
         raw_model = model.module
 
     if master_process:
@@ -327,7 +336,7 @@ def train_pretrain(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = 
     # 4. Optimizer & Scaler
     batch_size = smoke_cfg.get("batch_size", pt_cfg["batch_size"])
     grad_accum_steps = smoke_cfg.get("gradient_accumulation_steps", pt_cfg["gradient_accumulation_steps"])
-    max_steps = smoke_cfg.get("max_steps", pt_cfg["max_steps"])
+    max_steps = max_steps_override if max_steps_override is not None else smoke_cfg.get("max_steps", pt_cfg["max_steps"])
     warmup_steps = smoke_cfg.get("warmup_steps", pt_cfg["warmup_steps"])
     eval_interval = smoke_cfg.get("eval_interval_steps", pt_cfg["eval_interval_steps"])
     sample_interval = smoke_cfg.get("sample_interval_steps", pt_cfg["sample_interval_steps"])
@@ -408,7 +417,8 @@ def train_pretrain(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = 
     # 6. Training Loop Setup
     tokens_per_step = batch_size * model_config.max_seq_len * grad_accum_steps * world_size
     save_interval_secs = pt_cfg.get("save_interval_mins", 20) * 60
-    max_session_secs = pt_cfg.get("max_session_hours", 11.0) * 3600
+    session_hours = max_session_hours_override if max_session_hours_override is not None else pt_cfg.get("max_session_hours", 11.0)
+    max_session_secs = session_hours * 3600
 
     session_start_time = time.time()
     last_save_time = time.time()
@@ -555,10 +565,28 @@ def train_pretrain(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = 
             if master_process:
                 print("\n" + "!" * 80)
                 print(f"[!] Session time limit reached ({format_time(now - session_start_time)}).")
-                print("    Saving graceful exit checkpoint and terminating for session chaining...")
+                print("    Saving graceful exit checkpoint and terminating for SFT...")
+                exit_ckpt_state = {
+                    "step": step,
+                    "model_state_dict": raw_model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scaler_state_dict": scaler.state_dict() if use_fp16 else None,
+                    "dataset_state": train_dataset.state_dict(),
+                    "best_val_loss": best_val_loss,
+                    "rng_state": {
+                        "python": random.getstate(),
+                        "numpy": np.random.get_state(),
+                        "torch": torch.get_rng_state(),
+                        "cuda": torch.cuda.get_rng_state() if torch.cuda.is_available() else None
+                    },
+                    "config": cfg
+                }
                 end_ckpt_path = os.path.join(checkpoint_dir, "checkpoint_session_end.pt")
-                torch.save(ckpt_state, end_ckpt_path)
-                torch.save(ckpt_state, latest_ckpt_path)
+                torch.save(exit_ckpt_state, end_ckpt_path)
+                torch.save(exit_ckpt_state, latest_ckpt_path)
+                best_ckpt_path = os.path.join(checkpoint_dir, "checkpoint_best.pt")
+                if not os.path.isfile(best_ckpt_path):
+                    torch.save(exit_ckpt_state, best_ckpt_path)
                 print(f"    Saved: {end_ckpt_path}")
                 print("!" * 80 + "\n")
             if ddp:
@@ -579,6 +607,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TunisiaLLM Pretraining")
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--smoke-test", action="store_true", help="Run tiny smoke test (200 steps)")
+    parser.add_argument("--max-steps", type=int, default=None, help="Override total steps")
+    parser.add_argument("--max-session-hours", type=float, default=None, help="Override session duration in hours")
     args = parser.parse_args()
 
-    train_pretrain(args.config, smoke_test=args.smoke_test if args.smoke_test else None)
+    train_pretrain(
+        args.config,
+        smoke_test=args.smoke_test if args.smoke_test else None,
+        max_steps_override=args.max_steps,
+        max_session_hours_override=args.max_session_hours
+    )

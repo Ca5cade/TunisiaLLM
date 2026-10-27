@@ -395,18 +395,43 @@ def run_interactive_chat(engine: TunisiaLLMInference) -> None:
 
 
 def run_benchmark(engine: TunisiaLLMInference) -> None:
-    """Benchmark inference latency and token throughput."""
-    prompt = "عسلامة، بربي احسبلي 25 في 14 وقلي شنوة أحسن ماكلة في تونس؟"
-    print(f"\n[*] Benchmarking generation latency on {engine.device}...")
+    """Benchmark inference latency and token throughput across diverse prompts."""
+    test_cases = [
+        ("Greeting / Derja", "عسلامة يا باهي، شنوة أحوالك اليوم؟"),
+        ("Arithmetic Tool", "بربي احسبلي: قداش 45 مع 120 إلا 15؟"),
+        ("Shopping Math", "شريت 3 كيلو طماطم الكيلو بـ 1500 مليم، قداش يطيحو؟"),
+        ("Search / Factual", "وقتاش تأسست مدينة القيروان وشكون بناها؟"),
+        ("Tunisian Food", "قلي على اللبلابي التونسي وشنوة فيه؟")
+    ]
 
-    start = time.time()
-    token_count = 0
-    for chunk in engine.stream_generate(prompt, max_new_tokens=64):
-        token_count += 1
-    duration = time.time() - start
+    print("\n" + "=" * 80)
+    print(f"TunisiaLLM Comprehensive Inference Benchmark on {engine.device}")
+    print("=" * 80)
 
-    tps = token_count / max(1e-5, duration)
-    print(f"[+] Generated {token_count} chunks in {duration:.2f}s -> {tps:.2f} tokens/second")
+    total_tokens = 0
+    total_time = 0.0
+
+    for category, prompt in test_cases:
+        print(f"\n[Test: {category}]")
+        print(f"User 👤:      {prompt}")
+        print("Assistant 🤖: ", end="", flush=True)
+
+        start = time.time()
+        count = 0
+        for chunk in engine.stream_generate(prompt, max_new_tokens=96):
+            print(chunk, end="", flush=True)
+            count += 1
+        duration = time.time() - start
+
+        total_tokens += count
+        total_time += duration
+        tps = count / max(1e-5, duration)
+        print(f"\n  ⏱️ Latency: {duration:.2f}s | Speed: {tps:.1f} tok/s")
+
+    overall_tps = total_tokens / max(1e-5, total_time)
+    print("\n" + "=" * 80)
+    print(f"Benchmark Summary: {total_tokens} total tokens in {total_time:.2f}s -> Average Speed: {overall_tps:.1f} tokens/second")
+    print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":

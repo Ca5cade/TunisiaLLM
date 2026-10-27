@@ -14,16 +14,17 @@ A complete, production-grade pipeline to pretrain and instruction-tune an **~80M
 
 ```
 TunisiaLLM/
+├── run_pipeline.py      # Master autonomous 12-hour end-to-end pipeline orchestrator
 ├── config.yaml          # Master configuration (paths, model presets, training params)
 ├── utils.py             # Shared environment detection, seed setting, and formatting
-├── 01_data_prep.py      # Download, clean, MinHash near-dedup, and train/val splits
+├── 01_data_prep.py      # Download, clean, exact MD5 dedup, and train/val splits
 ├── 02_tokenizer.py      # Train 16k Byte-Level BPE + uint16 .bin sharder
 ├── 03_model.py          # LLaMA decoder (30M, 80M, 125M presets, RoPE, SwiGLU, GQA)
 ├── 04_pretrain.py       # DDP 2x T4 pretraining, memmap dataloader, 20m checkpointing
 ├── 05_make_sft_data.py  # SFT dialogue builder (tools, smalltalk, QA, loss masking)
 ├── 06_sft.py            # Supervised fine-tuning with assistant-only loss masking
 ├── 07_inference.py      # Streaming generation with KV cache, tools, INT8/FP16 export
-└── README.md            # Detailed workflow and Kaggle session chaining guide
+└── README.md            # Detailed workflow and Kaggle execution guide
 ```
 
 ---
@@ -79,31 +80,32 @@ python 07_inference.py --export-fp16 output/model_fp16.pt --export-int8 output/m
 
 Kaggle provides **2x T4 GPUs (16GB each)** with a **12-hour session limit** and **~30 GPU hours per week**. Because pretraining 80M tokens to convergence requires ~15-20 hours on 2x T4, the workflow is split into **chainable sessions**.
 
-### Prerequisites in Kaggle Notebook Settings:
-- **Accelerator**: `GPU T4 x2`
-- **Internet**: `On` (needed for 01_data_prep to download HF datasets)
-- **Environment**: `Python 3` (PyTorch 2.x comes preinstalled)
+### 🚀 Autonomous 12-Hour All-in-One Training (Recommended)
+
+To run the entire lifecycle from zero to a packaged, evaluated, tool-calling chat model completely hands-off:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/Ca5cade/TunisiaLLM.git
+cd TunisiaLLM
+
+# 2. Run the 12-hour master pipeline:
+python run_pipeline.py --total-hours 11.2
+```
+
+The master pipeline will automatically:
+1. Detect **2x T4 GPUs** and configure Distributed Data Parallel (DDP).
+2. Download and prepare Tunisian Derja + Wikipedia mixture datasets.
+3. Train the 16K Byte-Level BPE tokenizer and pack uint16 binary shards.
+4. Run DDP pretraining for **~9.5 - 10 hours** (~1.2 Billion tokens) with graceful exit safeguard.
+5. Generate synthetic Derja dialogue and tool-calling SFT datasets with causal loss masking.
+6. Fine-tune for **~25 minutes** to produce the final conversational & tool-calling model.
+7. Run the **Automated Benchmark Suite** testing Derja chat, calculator tools, and search tools.
+8. Automatically create **`tunisiallm_model.zip`** ready to download in 1 click!
 
 ---
 
-### Phase 1: Data Preparation & Tokenizer (CPU or P100/T4)
-*Runtime: ~20 minutes | Output: `data/`, `tokenizer.json`*
-
-Run in **Notebook 1**:
-```bash
-# Clone or upload repository scripts to /kaggle/working
-cd /kaggle/working
-
-# 1. Download Tunisian corpora + Arabic/French/English Wikipedia subsets
-python 01_data_prep.py
-
-# 2. Train 16k Byte-Level BPE and shard into uint16 .bin files
-python 02_tokenizer.py
-```
-
-> **Save Output as Kaggle Dataset:**
-> 1. In Kaggle notebook, click **Save Version** -> **Quick Save**.
-> 2. Open the completed version, scroll to Output, and click **Create Dataset** (name it `tunisiallm-data`).
+### Step-by-Step Manual Execution Guide
 
 ---
 

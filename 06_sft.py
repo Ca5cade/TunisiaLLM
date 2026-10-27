@@ -73,14 +73,17 @@ def evaluate_sft_validation(
     model: nn.Module,
     val_loader: DataLoader,
     device: torch.device,
-    use_fp16: bool
+    use_fp16: bool,
+    max_batches: int = 30
 ) -> Tuple[float, float]:
     """Compute loss and perplexity on assistant tokens over validation set."""
     model.eval()
     total_loss = 0.0
     total_batches = 0
 
-    for inputs, labels in val_loader:
+    for i, (inputs, labels) in enumerate(val_loader):
+        if i >= max_batches:
+            break
         inputs = inputs.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
         shift_inputs = inputs[:, :-1].contiguous()
@@ -152,7 +155,7 @@ def sample_sft_chat(
 # SFT Training Pipeline
 # ==============================================================================
 
-def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None, fresh: bool = False) -> None:
+def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None, fresh: bool = False, max_steps_override: Optional[int] = None) -> None:
     """Run Supervised Fine-Tuning."""
     cfg = load_config(cfg_path, smoke_test_override=smoke_test)
     is_smoke = cfg.get("smoke_test", False)
@@ -231,7 +234,7 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
     )
 
     total_steps = len(train_loader) * epochs // grad_accum_steps
-    max_steps_cfg = smoke_sft_cfg.get("max_steps", sft_cfg.get("max_steps", None))
+    max_steps_cfg = max_steps_override if max_steps_override is not None else smoke_sft_cfg.get("max_steps", sft_cfg.get("max_steps", None))
     if max_steps_cfg:
         total_steps = min(total_steps, max_steps_cfg)
     warmup_steps = int(total_steps * sft_cfg.get("warmup_ratio", 0.05))
@@ -282,7 +285,11 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
             print("[!] Warning: No pretrained checkpoint found. Initializing from scratch for test...")
 
     if ddp:
-        model = DDP(model, device_ids=[local_rank])
+        model = DDP(model, device_ids=[local_rank], broadcast_buffers=False)
+        try:
+            model._set_static_graph()
+        except Exception:
+            pass
         raw_model = model.module
 
     # 5. Optimizer & Scaler
@@ -448,13 +455,17 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
 
     if master_process:
         final_sft_path = os.path.join(checkpoint_dir, "sft_checkpoint_final.pt")
-        torch.save({
+        final_state = {
             "step": global_step,
             "epoch": epochs,
             "model_state_dict": raw_model.state_dict(),
             "best_val_loss": best_val_loss,
             "config": cfg
-        }, final_sft_path)
+        }
+        torch.save(final_state, final_sft_path)
+        best_sft_path = os.path.join(checkpoint_dir, "sft_checkpoint_best.pt")
+        if not os.path.isfile(best_sft_path):
+            torch.save(final_state, best_sft_path)
         print("\n" + "=" * 80)
         print(f"[OK] SFT Instruction Tuning Completed! Final checkpoint saved to: {final_sft_path}")
         print("=" * 80)
@@ -468,6 +479,7 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--smoke-test", action="store_true", help="Run tiny smoke test (quick verification)")
     parser.add_argument("--fresh", action="store_true", help="Start SFT fresh from pretrained checkpoint_best.pt")
+    parser.add_argument("--max-steps", type=int, default=None, help="Override SFT max steps")
     args = parser.parse_args()
 
-    train_sft(args.config, smoke_test=args.smoke_test if args.smoke_test else None, fresh=args.fresh)
+    train_sft(args.config, smoke_test=args.smoke_test if args.smoke_test else None, fresh=args.fresh, max_steps_override=args.max_steps)

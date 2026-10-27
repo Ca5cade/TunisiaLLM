@@ -103,12 +103,12 @@ model:
 
 # 04_pretrain Training Settings
 pretrain:
-  batch_size: 8                  # Per-GPU micro batch size (optimal for 16GB T4 VRAM)
-  gradient_accumulation_steps: 16 # Effective batch size = 8 * 16 = 128 seqs (131,072 tokens)
+  batch_size: 16                 # Per-GPU micro batch size (optimal for 16GB T4 VRAM)
+  gradient_accumulation_steps: 8 # Effective batch size = 16 * 8 * 2 = 256 seqs (262,144 tokens)
   learning_rate: 6.0e-4          # Peak learning rate
-  min_learning_rate: 6.0e-5      # 10% of peak
-  warmup_steps: 1000             # Warmup steps
-  max_steps: 40000               # Total pretraining steps (~10B tokens max)
+  min_learning_rate: 6.0e-5      # 10% of peak (proper cosine annealing)
+  warmup_steps: 500              # 500 warmup steps
+  max_steps: 4800                # Calibrated for ~10h on 2x T4 (~1.25B tokens)
   weight_decay: 0.1
   adam_beta1: 0.9
   adam_beta2: 0.95
@@ -116,13 +116,13 @@ pretrain:
   grad_clip: 1.0
   fp16: true                     # fp16 autocast + GradScaler (optimal for T4)
   compile: false                 # PyTorch 2.0 torch.compile (optional on T4)
-  gradient_checkpointing: false  # Set true to trade ~20% speed for 4x VRAM savings
+  gradient_checkpointing: false  # Not needed with 16GB VRAM; preserves peak throughput
 
   # Checkpointing & Graceful Exit
   save_interval_mins: 20         # Save full checkpoint every 20 minutes
   eval_interval_steps: 250       # Evaluate validation loss
   sample_interval_steps: 500     # Generate text samples during training
-  max_session_hours: 11.0        # Gracefully stop & save before Kaggle 12h limit
+  max_session_hours: 10.0        # Gracefully stop & save at 10.0h, leaving 1.5h for SFT & export
   keep_last_n_checkpoints: 3     # Manage disk space
 
   # Smoke test overrides
@@ -137,7 +137,8 @@ pretrain:
 
 # 05_make_sft_data Settings
 sft_data:
-  num_samples: 150000            # Total chat dialogues to generate
+  num_samples: 80000             # 80K high-quality dialogues (fast, compact)
+  max_seq_len: 256               # 256 seqlen covers 100% of dialogues; 4x faster SFT!
   val_samples: 2000
   categories:
     derja_casual: 0.35           # Casual greetings, smalltalk, daily life in Derja
@@ -151,17 +152,17 @@ sft_data:
 sft:
   batch_size: 16
   gradient_accumulation_steps: 4
-  learning_rate: 3.5e-5          # Low learning rate for instruction tuning
-  min_learning_rate: 3.5e-6
+  learning_rate: 4.0e-5          # Optimal learning rate for instruction tuning
+  min_learning_rate: 4.0e-6
   epochs: 1                      # 1 epoch is standard for SFT (prevents memorization)
-  max_steps: 1000                # ~1000 steps (~25-30 mins) is plenty for instruction tuning
+  max_steps: 1200                # ~1200 steps (~20-25 mins on 2x T4)
   warmup_ratio: 0.05
   weight_decay: 0.01
   grad_clip: 1.0
   fp16: true
   save_interval_mins: 15
   eval_interval_steps: 100
-  max_session_hours: 11.0
+  max_session_hours: 1.5
   smoke_test:
     epochs: 1
     max_steps: 5

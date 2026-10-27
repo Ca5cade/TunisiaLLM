@@ -307,7 +307,7 @@ def format_and_mask_conversation(
 # SFT Dataset Generation Orchestrator
 # ==============================================================================
 
-def build_sft_dataset(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None) -> None:
+def build_sft_dataset(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None, force: bool = False) -> None:
     """Generate SFT dialogues, apply loss masking, and save JSONL and tokenized datasets."""
     cfg = load_config(cfg_path, smoke_test_override=smoke_test)
     set_seed(cfg.get("seed", 42))
@@ -319,6 +319,13 @@ def build_sft_dataset(cfg_path: Optional[str] = None, smoke_test: Optional[bool]
 
     sft_dir = cfg["paths"]["sft_data_dir"]
     os.makedirs(sft_dir, exist_ok=True)
+
+    train_pt_path = os.path.join(sft_dir, "sft_train.pt")
+    val_pt_path = os.path.join(sft_dir, "sft_val.pt")
+    if not force and os.path.isfile(train_pt_path) and os.path.isfile(val_pt_path):
+        print(f"[OK] SFT dataset already exists at {train_pt_path}.")
+        print("     Skipping SFT data generation. (Pass --force to re-generate).")
+        return
 
     print("=" * 80)
     print("TunisiaLLM SFT Chat Dataset Generator")
@@ -385,7 +392,7 @@ def build_sft_dataset(cfg_path: Optional[str] = None, smoke_test: Optional[bool]
             f.write(json.dumps(c, ensure_ascii=False) + "\n")
 
     # 2. Tokenize and Apply Assistant-Only Loss Masking
-    max_seq_len = cfg["model"].get("max_seq_len", 1024)
+    max_seq_len = sft_cfg.get("max_seq_len", 256)
     if is_smoke:
         max_seq_len = 128
 
@@ -442,6 +449,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TunisiaLLM SFT Data Generator")
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--smoke-test", action="store_true", help="Generate small smoke test dataset")
+    parser.add_argument("--force", action="store_true", help="Force re-generation even if files exist")
     args = parser.parse_args()
 
-    build_sft_dataset(args.config, smoke_test=args.smoke_test if args.smoke_test else None)
+    build_sft_dataset(args.config, smoke_test=args.smoke_test if args.smoke_test else None, force=args.force)

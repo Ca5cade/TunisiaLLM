@@ -162,8 +162,9 @@ def encode_corpus_to_shards(
     return shard_files
 
 
-def run_tokenizer_pipeline(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None) -> None:
+def run_tokenizer_pipeline(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None, force: bool = False) -> None:
     """Run full tokenizer training and sharding."""
+    import glob
     cfg = load_config(cfg_path, smoke_test_override=smoke_test)
     set_seed(cfg.get("seed", 42))
 
@@ -171,6 +172,13 @@ def run_tokenizer_pipeline(cfg_path: Optional[str] = None, smoke_test: Optional[
     train_txt = os.path.join(data_dir, "cleaned_train.txt")
     val_txt = os.path.join(data_dir, "cleaned_val.txt")
     tokenizer_path = cfg["paths"]["tokenizer_path"]
+
+    # Check if already trained & sharded
+    train_shards = glob.glob(os.path.join(data_dir, "train_shard_*.bin"))
+    if not force and os.path.isfile(tokenizer_path) and len(train_shards) > 0:
+        print(f"[OK] Tokenizer ({tokenizer_path}) and {len(train_shards)} data shards already exist.")
+        print("     Skipping tokenizer training & sharding. (Pass --force to re-train).")
+        return
 
     # If cleaned_train.txt doesn't exist, create a sample so pipeline is runnable standalone
     if not os.path.isfile(train_txt):
@@ -213,6 +221,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TunisiaLLM Tokenizer Trainer")
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--smoke-test", action="store_true", help="Run tiny smoke test")
+    parser.add_argument("--force", action="store_true", help="Force re-training and re-sharding even if files exist")
     args = parser.parse_args()
 
-    run_tokenizer_pipeline(args.config, smoke_test=args.smoke_test if args.smoke_test else None)
+    run_tokenizer_pipeline(args.config, smoke_test=args.smoke_test if args.smoke_test else None, force=args.force)

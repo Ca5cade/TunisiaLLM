@@ -11,6 +11,8 @@ output/
 *.pth
 *.onnx
 *.safetensors
+*.zip
+*.tar.gz
 
 # Logs
 logs/

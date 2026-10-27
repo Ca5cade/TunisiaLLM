@@ -395,13 +395,20 @@ def download_wikipedia_mix(cfg: Dict, force_offline: bool = False) -> Dict[str, 
 # Pipeline Orchestrator
 # ==============================================================================
 
-def run_data_prep(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None, force_offline: bool = False) -> None:
+def run_data_prep(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None, force_offline: bool = False, force: bool = False) -> None:
     """Run full data preparation pipeline."""
     cfg = load_config(cfg_path, smoke_test_override=smoke_test)
     set_seed(cfg.get("seed", 42))
 
     data_dir = cfg["paths"]["data_dir"]
     os.makedirs(data_dir, exist_ok=True)
+
+    train_txt_path = os.path.join(data_dir, "cleaned_train.txt")
+    val_txt_path = os.path.join(data_dir, "cleaned_val.txt")
+    if not force and os.path.isfile(train_txt_path) and os.path.isfile(val_txt_path) and os.path.getsize(train_txt_path) > 1000:
+        print(f"[OK] Cleaned dataset already exists at {train_txt_path} ({os.path.getsize(train_txt_path):,} bytes).")
+        print("     Skipping data prep. (Pass --force to re-download and re-process).")
+        return
 
     print("=" * 80)
     print(f"TunisiaLLM Data Preparation Pipeline")
@@ -545,6 +552,7 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     parser.add_argument("--smoke-test", action="store_true", help="Run tiny smoke test")
     parser.add_argument("--offline", action="store_true", help="Use local synthetic corpus without network access")
+    parser.add_argument("--force", action="store_true", help="Force re-download and re-cleaning even if files exist")
     args = parser.parse_args()
 
-    run_data_prep(args.config, smoke_test=args.smoke_test if args.smoke_test else None, force_offline=args.offline)
+    run_data_prep(args.config, smoke_test=args.smoke_test if args.smoke_test else None, force_offline=args.offline, force=args.force)
