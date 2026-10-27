@@ -114,6 +114,9 @@
                         <button class="chip-toggle" id="chip-bilingual" data-system="إنت مساعد تونسي ثنائي اللغة (عربي / فرنسي / تونسي).">
                             🌐 ثنائي اللغة
                         </button>
+                        <button class="chip-toggle" id="btn-voice-toggle" title="تفعيل / إيقاف نطق الإجابة صوتياً (Text-to-Speech)">
+                            🔊 الرد الصوتي: إيقاف
+                        </button>
                     </div>
                     <div class="dock-stats" id="dock-metrics" style="display: none;">
                         <span class="stat-badge" id="stat-speed">⚡ 0.0 tok/s</span>
@@ -121,22 +124,46 @@
                     </div>
                 </div>
 
+                <!-- Voice Recording Live Bar -->
+                <div class="voice-status-bar" id="voice-status-bar" style="display: none;">
+                    <div class="voice-waves">
+                        <span class="wave-bar"></span>
+                        <span class="wave-bar"></span>
+                        <span class="wave-bar"></span>
+                        <span class="wave-bar"></span>
+                        <span class="wave-bar"></span>
+                    </div>
+                    <span class="voice-status-text" id="voice-status-text">🎙️ جارٍ الاستماع... تفضل تكلم بالدارجة</span>
+                    <button type="button" class="btn-voice-cancel" id="btn-voice-cancel" title="إلغاء التحدث">✕</button>
+                </div>
+
                 <div class="textarea-wrapper">
                     <textarea 
                         id="chat-input" 
                         rows="1" 
-                        placeholder="اكتب ميساجك بالدارجة التونسية أو بأي لغة... (اضغط Enter للإرسال)"
+                        placeholder="اكتب ميساجك بالدارجة التونسية أو اضغط على الميكرو للتحدث... (Enter للإرسال)"
                         autofocus
                     ></textarea>
                     
-                    <button type="button" class="btn-send" id="btn-send" title="إرسال الرسالة">
-                        <svg class="send-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-                        </svg>
-                        <svg class="stop-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
-                            <rect x="6" y="6" width="12" height="12" rx="2"/>
-                        </svg>
-                    </button>
+                    <div class="input-actions-inline">
+                        <button type="button" class="btn-mic" id="btn-mic" title="تكلم بالميكروفون (Voice Input)">
+                            <svg class="mic-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                <line x1="12" y1="19" x2="12" y2="23"/>
+                                <line x1="8" y1="23" x2="16" y2="23"/>
+                            </svg>
+                        </button>
+                        
+                        <button type="button" class="btn-send" id="btn-send" title="إرسال الرسالة">
+                            <svg class="send-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                            </svg>
+                            <svg class="stop-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                                <rect x="6" y="6" width="12" height="12" rx="2"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </footer>
@@ -193,6 +220,35 @@
                     <input type="range" id="setting-rep-penalty" min="1.0" max="1.5" step="0.05" value="1.15">
                 </div>
 
+                <!-- Voice Input & Reply Settings -->
+                <div class="setting-group voice-settings-group">
+                    <div class="setting-label-row">
+                        <label for="setting-voice-lang">لغة التعرف على الصوت (Mic Language):</label>
+                    </div>
+                    <select id="setting-voice-lang" class="setting-select">
+                        <option value="ar-TN" selected>🇹🇳 الدارجة التونسية (ar-TN)</option>
+                        <option value="ar-SA">العربية العامة (ar-SA)</option>
+                        <option value="fr-FR">🇫🇷 Français (fr-FR)</option>
+                        <option value="en-US">🇺🇸 English (en-US)</option>
+                    </select>
+
+                    <div class="setting-checkbox-row">
+                        <label class="switch-label">
+                            <input type="checkbox" id="setting-auto-speak">
+                            <span class="switch-custom"></span>
+                            <span>الرد الصوتي التلقائي (Auto Voice Reply)</span>
+                        </label>
+                    </div>
+
+                    <div class="setting-checkbox-row">
+                        <label class="switch-label">
+                            <input type="checkbox" id="setting-auto-send" checked>
+                            <span class="switch-custom"></span>
+                            <span>إرسال فوري بمجرد التوقف عن الكلام</span>
+                        </label>
+                    </div>
+                </div>
+
                 <!-- Model Hardware Stats Card -->
                 <div class="hardware-card">
                     <div class="hw-title">معلومات النموذج والمحرك</div>
@@ -222,6 +278,6 @@
         </aside>
     </div>
 
-    <script src="/app.js?v=3.0"></script>
+    <script src="/app.js?v=4.0"></script>
 </body>
 </html>

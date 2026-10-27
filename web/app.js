@@ -36,10 +36,29 @@ document.addEventListener("DOMContentLoaded", () => {
     const valMaxTokens = document.getElementById("val-max-tokens");
     const valRepPenalty = document.getElementById("val-rep-penalty");
 
+    // Voice & Audio DOM Elements
+    const btnMic = document.getElementById("btn-mic");
+    const voiceStatusBar = document.getElementById("voice-status-bar");
+    const voiceStatusText = document.getElementById("voice-status-text");
+    const btnVoiceCancel = document.getElementById("btn-voice-cancel");
+    const btnVoiceToggle = document.getElementById("btn-voice-toggle");
+    const settingVoiceLang = document.getElementById("setting-voice-lang");
+    const settingAutoSpeak = document.getElementById("setting-auto-speak");
+    const settingAutoSend = document.getElementById("setting-auto-send");
+
     // State
     let isGenerating = false;
     let abortController = null;
     let chatHistory = [];
+    
+    // Voice State
+    let isRecording = false;
+    let recognition = null;
+    let autoSpeak = false;
+    let autoSendSpeech = true;
+    let voiceLang = "ar-TN";
+    let speechTimer = null;
+    let currentlySpeakingBtn = null;
 
     // =========================================================================
     // Settings Binding & Persistence
@@ -63,6 +82,19 @@ document.addEventListener("DOMContentLoaded", () => {
             settingRepPenalty.value = saved.repPenalty;
             valRepPenalty.textContent = saved.repPenalty;
         }
+        if (saved.voiceLang) {
+            voiceLang = saved.voiceLang;
+            if (settingVoiceLang) settingVoiceLang.value = saved.voiceLang;
+        }
+        if (saved.autoSpeak !== undefined) {
+            autoSpeak = saved.autoSpeak;
+            if (settingAutoSpeak) settingAutoSpeak.checked = saved.autoSpeak;
+            updateVoiceToggleButton();
+        }
+        if (saved.autoSendSpeech !== undefined) {
+            autoSendSpeech = saved.autoSendSpeech;
+            if (settingAutoSend) settingAutoSend.checked = saved.autoSendSpeech;
+        }
     }
 
     function saveSettings() {
@@ -72,6 +104,9 @@ document.addEventListener("DOMContentLoaded", () => {
             topP: settingTopP.value,
             maxTokens: settingMaxTokens.value,
             repPenalty: settingRepPenalty.value,
+            voiceLang: settingVoiceLang ? settingVoiceLang.value : voiceLang,
+            autoSpeak: autoSpeak,
+            autoSendSpeech: autoSendSpeech
         };
         localStorage.setItem("tunisiallm_settings", JSON.stringify(settings));
     }
@@ -94,6 +129,48 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     settingSystemPrompt.addEventListener("input", saveSettings);
 
+    if (settingVoiceLang) {
+        settingVoiceLang.addEventListener("change", (e) => {
+            voiceLang = e.target.value;
+            saveSettings();
+        });
+    }
+
+    if (settingAutoSpeak) {
+        settingAutoSpeak.addEventListener("change", (e) => {
+            autoSpeak = e.target.checked;
+            updateVoiceToggleButton();
+            saveSettings();
+        });
+    }
+
+    if (settingAutoSend) {
+        settingAutoSend.addEventListener("change", (e) => {
+            autoSendSpeech = e.target.checked;
+            saveSettings();
+        });
+    }
+
+    function updateVoiceToggleButton() {
+        if (!btnVoiceToggle) return;
+        if (autoSpeak) {
+            btnVoiceToggle.classList.add("active");
+            btnVoiceToggle.textContent = "🔊 الرد الصوتي: مفعّل";
+        } else {
+            btnVoiceToggle.classList.remove("active");
+            btnVoiceToggle.textContent = "🔊 الرد الصوتي: إيقاف";
+        }
+    }
+
+    if (btnVoiceToggle) {
+        btnVoiceToggle.addEventListener("click", () => {
+            autoSpeak = !autoSpeak;
+            if (settingAutoSpeak) settingAutoSpeak.checked = autoSpeak;
+            updateVoiceToggleButton();
+            saveSettings();
+        });
+    }
+
     btnResetSettings.addEventListener("click", () => {
         settingSystemPrompt.value = "إنت مساعد ذكي بالدارجة التونسية. جاوب بكل طلاقة ووضوح.";
         settingTemp.value = "0.7";
@@ -104,8 +181,229 @@ document.addEventListener("DOMContentLoaded", () => {
         valMaxTokens.textContent = "256";
         settingRepPenalty.value = "1.15";
         valRepPenalty.textContent = "1.15";
+        if (settingVoiceLang) settingVoiceLang.value = "ar-TN";
+        if (settingAutoSpeak) settingAutoSpeak.checked = false;
+        if (settingAutoSend) settingAutoSend.checked = true;
+        voiceLang = "ar-TN";
+        autoSpeak = false;
+        autoSendSpeech = true;
+        updateVoiceToggleButton();
         saveSettings();
     });
+
+    // =========================================================================
+    // Speech Recognition (Speech-to-Text / Microphone)
+    // =========================================================================
+    function initSpeechRecognition() {
+        if (!btnMic) return;
+
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) {
+            btnMic.title = "المتصفح لا يدعم التعرف على الصوت (Web Speech API غير مدعوم)";
+            btnMic.addEventListener("click", () => {
+                alert("عذراً، متصفحك لا يدعم التعرف الصوتي (Web Speech Recognition). يرجى استعمال متصفح Google Chrome أو Microsoft Edge.");
+            });
+            return;
+        }
+
+        try {
+            recognition = new SpeechRec();
+            recognition.lang = settingVoiceLang ? settingVoiceLang.value : (voiceLang || "ar-TN");
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onstart = () => {
+                isRecording = true;
+                btnMic.classList.add("recording");
+                btnMic.title = "إيقاف التسجيل وإرسال (Stop Recording)";
+                if (voiceStatusBar) voiceStatusBar.style.display = "flex";
+                if (voiceStatusText) voiceStatusText.textContent = "🎙️ نسمع فيك... تفضل تكلم بالدارجة التونسية";
+            };
+
+            recognition.onresult = (event) => {
+                let fullTranscript = "";
+                for (let i = 0; i < event.results.length; i++) {
+                    fullTranscript += event.results[i][0].transcript + " ";
+                }
+                const cleanText = fullTranscript.trim();
+                if (cleanText) {
+                    chatInput.value = cleanText;
+                    resizeTextarea();
+                    chatInput.dir = isArabicText(cleanText) ? "rtl" : "ltr";
+                }
+
+                // If auto-send on silence is enabled
+                if (autoSendSpeech) {
+                    clearTimeout(speechTimer);
+                    speechTimer = setTimeout(() => {
+                        if (isRecording && chatInput.value.trim().length > 0) {
+                            stopSpeechRecognition(true);
+                        }
+                    }, 1400); // 1.4s silence
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.warn("Speech recognition error:", event.error);
+                if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+                    alert("يرجى إعطاء الإذن للمتصفح لاستخدام الميكروفون (Microphone Permission Required).");
+                }
+                stopSpeechRecognition(false);
+            };
+
+            recognition.onend = () => {
+                isRecording = false;
+                btnMic.classList.remove("recording");
+                btnMic.title = "تكلم بالميكروفون (Voice Input)";
+                if (voiceStatusBar) voiceStatusBar.style.display = "none";
+            };
+
+            btnMic.addEventListener("click", () => {
+                if (isRecording) {
+                    stopSpeechRecognition(true);
+                } else {
+                    startSpeechRecognition();
+                }
+            });
+
+            if (btnVoiceCancel) {
+                btnVoiceCancel.addEventListener("click", () => {
+                    stopSpeechRecognition(false);
+                });
+            }
+        } catch (e) {
+            console.error("Failed to initialize speech recognition:", e);
+        }
+    }
+
+    function startSpeechRecognition() {
+        if (!recognition || isGenerating) return;
+        try {
+            recognition.lang = settingVoiceLang ? settingVoiceLang.value : (voiceLang || "ar-TN");
+            recognition.start();
+        } catch (e) {
+            console.error("Failed to start speech recognition:", e);
+        }
+    }
+
+    function stopSpeechRecognition(shouldSend = false) {
+        if (speechTimer) clearTimeout(speechTimer);
+        if (recognition && isRecording) {
+            try {
+                recognition.stop();
+            } catch (e) {}
+        }
+        isRecording = false;
+        if (btnMic) btnMic.classList.remove("recording");
+        if (voiceStatusBar) voiceStatusBar.style.display = "none";
+
+        if (shouldSend && chatInput.value.trim().length > 0) {
+            setTimeout(() => {
+                sendMessage();
+            }, 300);
+        }
+    }
+
+    // =========================================================================
+    // Speech Synthesis (Text-to-Speech / Voice Reply)
+    // =========================================================================
+    function cleanTextForSpeech(rawText) {
+        if (!rawText) return "";
+        let cleaned = rawText;
+        // Strip tool call blocks and results
+        cleaned = cleaned.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "");
+        cleaned = cleaned.replace(/<tool_result>[\s\S]*?<\/tool_result>/g, "");
+        // Strip markdown formatting & links
+        cleaned = cleaned.replace(/[*_#`~>]/g, "");
+        cleaned = cleaned.replace(/\[.*?\]\(.*?\)/g, "");
+        return cleaned.trim();
+    }
+
+    function getBestArabicVoice() {
+        if (!window.speechSynthesis) return null;
+        const voices = window.speechSynthesis.getVoices();
+        if (!voices || voices.length === 0) return null;
+
+        // Try to match Tunisian or Arabic voice
+        return voices.find(v => v.lang.toLowerCase().includes("ar-tn")) ||
+               voices.find(v => v.lang.toLowerCase().startsWith("ar")) ||
+               voices.find(v => v.lang.toLowerCase().startsWith("fr")) ||
+               voices[0];
+    }
+
+    function getSpeakerIcon(isPlaying) {
+        if (isPlaying) {
+            return `
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="2"/>
+                </svg>
+                <span>إيقاف</span>
+            `;
+        }
+        return `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+            <span>استماع</span>
+        `;
+    }
+
+    function speakText(rawText, btnElement = null) {
+        if (!window.speechSynthesis) return;
+
+        // If already speaking, cancel
+        if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+            if (currentlySpeakingBtn) {
+                currentlySpeakingBtn.classList.remove("playing");
+                currentlySpeakingBtn.innerHTML = getSpeakerIcon(false);
+                currentlySpeakingBtn = null;
+            }
+            if (btnElement === currentlySpeakingBtn) {
+                return;
+            }
+        }
+
+        const cleanText = cleanTextForSpeech(rawText);
+        if (!cleanText) return;
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        const voice = getBestArabicVoice();
+        if (voice) {
+            utterance.voice = voice;
+            utterance.lang = voice.lang;
+        } else {
+            utterance.lang = "ar-SA";
+        }
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+
+        if (btnElement) {
+            currentlySpeakingBtn = btnElement;
+            btnElement.classList.add("playing");
+            btnElement.innerHTML = getSpeakerIcon(true);
+        }
+
+        utterance.onend = () => {
+            if (btnElement) {
+                btnElement.classList.remove("playing");
+                btnElement.innerHTML = getSpeakerIcon(false);
+            }
+            if (currentlySpeakingBtn === btnElement) currentlySpeakingBtn = null;
+        };
+
+        utterance.onerror = () => {
+            if (btnElement) {
+                btnElement.classList.remove("playing");
+                btnElement.innerHTML = getSpeakerIcon(false);
+            }
+            if (currentlySpeakingBtn === btnElement) currentlySpeakingBtn = null;
+        };
+
+        window.speechSynthesis.speak(utterance);
+    }
 
     // =========================================================================
     // Drawer Management
@@ -400,12 +698,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 <span>⚡ ${finalTps} tok/s</span>
                 <span>•</span>
                 <span>${tokenCount} tokens in ${elapsedTotal}s</span>
-                <button class="btn-copy-msg" title="نسخ">
+                <button class="btn-copy-msg" title="نسخ النص">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                     </svg>
                     <span>نسخ</span>
+                </button>
+                <button class="btn-speak-msg" title="استمع للرد (Listen to speech)">
+                    ${getSpeakerIcon(false)}
                 </button>
             `;
 
@@ -418,10 +719,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 }, 2000);
             });
 
+            const speakBtn = metaBar.querySelector(".btn-speak-msg");
+            speakBtn.addEventListener("click", () => {
+                speakText(assistantFullText, speakBtn);
+            });
+
             bubble.appendChild(metaBar);
             chatHistory.push({ role: "assistant", content: assistantFullText });
             setGeneratingState(false);
             scrollToBottom();
+
+            // Auto-speak response if enabled
+            if (autoSpeak) {
+                speakText(assistantFullText, speakBtn);
+            }
         }
     }
 
@@ -476,5 +787,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // Initialize
     loadSavedSettings();
     checkModelStatus();
+    initSpeechRecognition();
+    if (window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = () => {
+            getBestArabicVoice();
+        };
+    }
     window.sendMessage = sendMessage;
 });

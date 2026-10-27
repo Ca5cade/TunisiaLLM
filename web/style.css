@@ -644,7 +644,6 @@ body::before {
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
-    margin-left: 8px;
     transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
@@ -660,6 +659,226 @@ body::before {
 
 .btn-send svg {
     pointer-events: none;
+}
+
+/* Inline Actions (Mic + Send) */
+.input-actions-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+/* Microphone Button */
+.btn-mic {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-glass);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+    position: relative;
+}
+
+.btn-mic:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.25);
+    transform: scale(1.05);
+}
+
+.btn-mic.recording {
+    background: linear-gradient(135deg, #FF3344, #B81423);
+    color: #FFFFFF;
+    border-color: #FF3344;
+    box-shadow: 0 0 20px rgba(230, 43, 58, 0.65);
+    animation: micPulseRing 1.5s infinite;
+}
+
+@keyframes micPulseRing {
+    0% {
+        box-shadow: 0 0 0 0 rgba(230, 43, 58, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(230, 43, 58, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(230, 43, 58, 0);
+    }
+}
+
+.btn-mic svg {
+    pointer-events: none;
+}
+
+/* Voice Status Bar (Live Audio Waves) */
+.voice-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(230, 43, 58, 0.12);
+    border: 1px solid rgba(230, 43, 58, 0.35);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.voice-waves {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+}
+
+.wave-bar {
+    display: inline-block;
+    width: 3.5px;
+    height: 6px;
+    background: #FF3344;
+    border-radius: 3px;
+    animation: soundWave 1.2s infinite ease-in-out;
+}
+
+.wave-bar:nth-child(1) { animation-delay: 0.1s; }
+.wave-bar:nth-child(2) { animation-delay: 0.25s; }
+.wave-bar:nth-child(3) { animation-delay: 0.4s; }
+.wave-bar:nth-child(4) { animation-delay: 0.15s; }
+.wave-bar:nth-child(5) { animation-delay: 0.3s; }
+
+@keyframes soundWave {
+    0%, 100% { height: 6px; }
+    50% { height: 20px; }
+}
+
+.voice-status-text {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #FFA5AE;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-arabic), var(--font-ui);
+}
+
+.btn-voice-cancel {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: var(--text-secondary);
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    transition: all var(--transition-fast);
+}
+
+.btn-voice-cancel:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #FFFFFF;
+}
+
+/* Speak Message Button (TTS) in Message Meta */
+.btn-speak-msg {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color var(--transition-fast);
+    font-family: var(--font-arabic), var(--font-ui);
+}
+
+.btn-speak-msg:hover {
+    color: #38BDF8;
+}
+
+.btn-speak-msg.playing {
+    color: #38BDF8;
+    font-weight: 700;
+    animation: pulseText 1s infinite alternate;
+}
+
+@keyframes pulseText {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+}
+
+/* Voice Settings Controls in Drawer */
+.setting-select {
+    width: 100%;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid var(--border-glass);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-family: var(--font-arabic), var(--font-ui);
+    font-size: 0.9rem;
+    outline: none;
+    cursor: pointer;
+    margin-top: 6px;
+}
+
+.setting-checkbox-row {
+    margin-top: 10px;
+}
+
+.switch-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    user-select: none;
+}
+
+.switch-label input[type="checkbox"] {
+    display: none;
+}
+
+.switch-custom {
+    position: relative;
+    width: 38px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 20px;
+    transition: background 0.25s ease;
+    flex-shrink: 0;
+}
+
+.switch-custom::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: #FFFFFF;
+    border-radius: 50%;
+    transition: transform 0.25s ease;
+}
+
+.switch-label input[type="checkbox"]:checked + .switch-custom {
+    background: var(--tunisia-red);
+}
+
+.switch-label input[type="checkbox"]:checked + .switch-custom::after {
+    transform: translateX(18px);
 }
 
 /* ==============================================================================
