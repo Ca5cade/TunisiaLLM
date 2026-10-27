@@ -6,6 +6,7 @@ __pycache__/
 # PyTorch checkpoints, weights and outputs
 checkpoints/
 output/
+tunisiallm_model/
 *.pt
 *.bin
 *.pth
