@@ -320,10 +320,6 @@ def train_pretrain(
 
     if ddp:
         model = DDP(model, device_ids=[local_rank], broadcast_buffers=False)
-        try:
-            model._set_static_graph()
-        except Exception:
-            pass
         raw_model = model.module
 
     if master_process:

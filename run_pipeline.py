@@ -31,6 +31,7 @@ from utils import load_config, format_time, format_bytes
 
 
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 def log_banner(title: str, fill: str = "=") -> None:
     """Print an eye-catching stage header."""
@@ -51,6 +52,8 @@ def run_command(cmd: List[str], desc: str) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1
     )
 

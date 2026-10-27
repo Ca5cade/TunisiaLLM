@@ -286,10 +286,6 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
 
     if ddp:
         model = DDP(model, device_ids=[local_rank], broadcast_buffers=False)
-        try:
-            model._set_static_graph()
-        except Exception:
-            pass
         raw_model = model.module
 
     # 5. Optimizer & Scaler

@@ -103,8 +103,8 @@ model:
 
 # 04_pretrain Training Settings
 pretrain:
-  batch_size: 32                 # Per-GPU micro batch size (maximizes ~12.5GB/15.6GB VRAM & Tensor Cores)
-  gradient_accumulation_steps: 4 # Effective batch size = 32 * 4 * 2 = 256 seqs (262,144 tokens)
+  batch_size: 16                 # Per-GPU micro batch size (7.7GB VRAM, rock-solid stable on 14.5GB T4)
+  gradient_accumulation_steps: 8 # Effective batch size = 16 * 8 * 2 = 256 seqs (262,144 tokens)
   learning_rate: 6.0e-4          # Peak learning rate
   min_learning_rate: 6.0e-5      # 10% of peak (proper cosine annealing)
   warmup_steps: 500              # 500 warmup steps
