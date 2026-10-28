@@ -21,6 +21,12 @@ paths:
 data:
   # HuggingFace Datasets for Tunisian Derja
   tunisian_datasets:
+    - name: "linagora/Tunisian_Derja_Dataset"
+      split: "train"
+      text_column: "text"
+    - name: "hamzabouajila/tunisian-derja-unified-raw-corpus"
+      split: "train"
+      text_column: "text"
     - name: "atakaboudi/Dialect_of_Tunisia-Work_Collection"
       split: "train"
       text_column: "text"
@@ -147,6 +153,24 @@ sft_data:
     search_tools: 0.12           # Factual questions emitting <tool_call>search:...
     refusals: 0.08               # "I don't know" / polite refusals
   smoke_test_samples: 1000
+
+  # Authentic HuggingFace Instruction Datasets for Versatility & High Quality
+  external_instruction_datasets:
+    - name: "Syrinesmati/tunisian-question-response-dataset"
+      instruction_col: "instruction"
+      response_col: "response"
+      split: "train"
+      limit: 15000               # 15K authentic Tunisian Q&A dialogues
+    - name: "Farah21/Tunisia_Tech"
+      instruction_col: "instruction"
+      response_col: "output"
+      split: "train"
+      limit: 5000                # 5K technical & problem-solving dialogues in Derja/French
+    - name: "FreedomIntelligence/Alpaca-Arabic-GPT4"
+      instruction_col: "instruction"
+      response_col: "output"
+      split: "train"
+      limit: 15000               # 15K general reasoning, science, and coding instructions in Arabic
 
 # 06_sft Training Settings
 sft:

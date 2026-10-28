@@ -21,6 +21,12 @@ import torch
 import numpy as np
 from tokenizers import Tokenizer
 
+try:
+    from datasets import load_dataset
+    HF_DATASETS_AVAILABLE = True
+except ImportError:
+    HF_DATASETS_AVAILABLE = False
+
 from utils import load_config, set_seed, format_num_params, format_bytes
 
 
@@ -320,6 +326,64 @@ def format_and_mask_conversation(
 
 
 # ==============================================================================
+# External Instruction Datasets Loader
+# ==============================================================================
+
+def load_external_instruction_datasets(cfg: Dict, is_smoke: bool = False) -> List[Dict]:
+    """Load authentic instruction/chat datasets from HuggingFace to increase versatility."""
+    ext_configs = cfg.get("sft_data", {}).get("external_instruction_datasets", [])
+    if not ext_configs or not HF_DATASETS_AVAILABLE:
+        return []
+
+    conversations = []
+    default_sys = "إنت مساعد ذكي ولطيف، تحكي بالدارجة التونسية بطلاقة وتجاوب بوضوح وبكل احترام."
+
+    for item in ext_configs:
+        name = item.get("name")
+        ins_col = item.get("instruction_col", "instruction")
+        res_col = item.get("response_col", "response")
+        split = item.get("split", "train")
+        limit = 50 if is_smoke else item.get("limit", 10000)
+
+        print(f"\n[*] Fetching external instruction dataset: {name} (limit={limit})...")
+        try:
+            ds = load_dataset(name, split=f"{split}[:{limit}]")
+            cnt = 0
+            for row in ds:
+                ins = ""
+                res = ""
+                if "conversations" in row and isinstance(row["conversations"], list):
+                    # Multi-turn or ShareGPT style: [{"from": "human", "value": "..."}, {"from": "gpt", "value": "..."}]
+                    convs = row["conversations"]
+                    if len(convs) >= 2:
+                        ins = convs[0].get("value", "")
+                        res = convs[1].get("value", "")
+                else:
+                    ins = row.get(ins_col) or row.get("question") or row.get("prompt") or ""
+                    res = row.get(res_col) or row.get("response") or row.get("output") or row.get("answer") or ""
+
+                if ins and res and isinstance(ins, str) and isinstance(res, str):
+                    ins = ins.strip()
+                    res = res.strip()
+                    if len(ins) >= 5 and len(res) >= 5:
+                        conversations.append({
+                            "system": default_sys,
+                            "turns": [
+                                {"role": "user", "content": ins},
+                                {"role": "assistant", "content": res}
+                            ],
+                            "category": "instruction_tuning",
+                            "source": name
+                        })
+                        cnt += 1
+            print(f"    [+] Successfully loaded {cnt:,} instruction dialogues from {name}")
+        except Exception as e:
+            print(f"    [!] Could not load {name} ({e}). Skipping.")
+
+    return conversations
+
+
+# ==============================================================================
 # SFT Dataset Generation Orchestrator
 # ==============================================================================
 
@@ -381,8 +445,17 @@ def build_sft_dataset(cfg_path: Optional[str] = None, smoke_test: Optional[bool]
     rng = random.Random(cfg.get("seed", 42))
 
     all_conversations = []
-    print("\n[*] Synthesizing structured chat dialogues...")
-    for i in range(total_samples):
+
+    # 1. Load external authentic instruction datasets (Tunisian QA, Tech, Arabic Alpaca)
+    external_convs = load_external_instruction_datasets(cfg, is_smoke=is_smoke)
+    if external_convs:
+        all_conversations.extend(external_convs)
+        print(f"[+] Loaded {len(external_convs):,} external authentic instruction samples.")
+
+    # 2. Synthesize structured chat dialogues (casual Derja, math tools, search tools, refusals)
+    synthetic_needed = max(0, total_samples - len(all_conversations)) if not is_smoke else max(100, total_samples)
+    print(f"\n[*] Synthesizing {synthetic_needed:,} structured chat dialogues (casual, tools, culture)...")
+    for i in range(synthetic_needed):
         cat = rng.choices(cat_names, weights=cat_weights, k=1)[0]
         gen_fn = generators[cat]
         conv = gen_fn(rng)
