@@ -155,7 +155,15 @@ def sample_sft_chat(
 # SFT Training Pipeline
 # ==============================================================================
 
-def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None, fresh: bool = False, max_steps_override: Optional[int] = None) -> None:
+def train_sft(
+    cfg_path: Optional[str] = None,
+    smoke_test: Optional[bool] = None,
+    fresh: bool = False,
+    max_steps_override: Optional[int] = None,
+    init_checkpoint: Optional[str] = None,
+    lr_override: Optional[float] = None,
+    epochs_override: Optional[int] = None
+) -> None:
     """Run Supervised Fine-Tuning."""
     cfg = load_config(cfg_path, smoke_test_override=smoke_test)
     is_smoke = cfg.get("smoke_test", False)
@@ -184,7 +192,7 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
 
     batch_size = smoke_sft_cfg.get("batch_size", sft_cfg["batch_size"])
     grad_accum_steps = smoke_sft_cfg.get("gradient_accumulation_steps", sft_cfg["gradient_accumulation_steps"])
-    epochs = smoke_sft_cfg.get("epochs", sft_cfg["epochs"])
+    epochs = epochs_override if epochs_override is not None else smoke_sft_cfg.get("epochs", sft_cfg["epochs"])
     eval_interval = smoke_sft_cfg.get("eval_interval_steps", sft_cfg["eval_interval_steps"])
 
     checkpoint_dir = cfg["paths"]["checkpoint_dir"]
@@ -198,6 +206,8 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
         print(f"Mode: {'SMOKE TEST' if is_smoke else 'FULL SFT'}")
         print(f"Device: {device} | DDP: {ddp} (World Size = {world_size})")
         print(f"Checkpoint Directory: {checkpoint_dir}")
+        if init_checkpoint:
+            print(f"Base Checkpoint: {init_checkpoint}")
         print("=" * 80)
 
     # Auto-generate SFT data if missing
@@ -262,7 +272,28 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
     start_step = 0
     best_val_loss = float("inf")
 
-    if not fresh and os.path.isfile(sft_latest_ckpt):
+    custom_ckpt_path = None
+    if init_checkpoint:
+        for p in [
+            init_checkpoint,
+            os.path.join(checkpoint_dir, init_checkpoint),
+            os.path.join("tunisiallm_model", init_checkpoint),
+            os.path.join("checkpoints", init_checkpoint)
+        ]:
+            if os.path.isfile(p):
+                custom_ckpt_path = p
+                break
+        if custom_ckpt_path is None:
+            raise FileNotFoundError(f"Specified checkpoint not found: {init_checkpoint}")
+
+    if custom_ckpt_path is not None:
+        if master_process:
+            print(f"[*] Initializing model weights from specified checkpoint: {custom_ckpt_path}")
+        ckpt = torch.load(custom_ckpt_path, map_location=device)
+        state_dict = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
+        raw_model.load_state_dict(state_dict, strict=False)
+        best_val_loss = ckpt.get("best_val_loss", float("inf"))
+    elif not fresh and os.path.isfile(sft_latest_ckpt):
         if master_process:
             print(f"[*] Resuming from ongoing SFT checkpoint: {sft_latest_ckpt}")
         ckpt = torch.load(sft_latest_ckpt, map_location=device)
@@ -289,8 +320,8 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
         raw_model = model.module
 
     # 5. Optimizer & Scaler
-    peak_lr = sft_cfg["learning_rate"]
-    min_lr = sft_cfg["min_learning_rate"]
+    peak_lr = lr_override if lr_override is not None else sft_cfg["learning_rate"]
+    min_lr = (peak_lr * 0.1) if lr_override is not None else sft_cfg["min_learning_rate"]
     use_fp16 = sft_cfg.get("fp16", True) and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_fp16)
 
@@ -474,9 +505,20 @@ def train_sft(cfg_path: Optional[str] = None, smoke_test: Optional[bool] = None,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TunisiaLLM SFT Training")
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Path to checkpoint (.pt) to initialize weights from (e.g. tunisiallm_model/sft_checkpoint_best.pt)")
+    parser.add_argument("--lr", type=float, default=None, help="Override learning rate (e.g. 2e-5 for continued fine-tuning)")
+    parser.add_argument("--epochs", type=int, default=None, help="Override number of epochs")
     parser.add_argument("--smoke-test", action="store_true", help="Run tiny smoke test (quick verification)")
     parser.add_argument("--fresh", action="store_true", help="Start SFT fresh from pretrained checkpoint_best.pt")
     parser.add_argument("--max-steps", type=int, default=None, help="Override SFT max steps")
     args = parser.parse_args()
 
-    train_sft(args.config, smoke_test=args.smoke_test if args.smoke_test else None, fresh=args.fresh, max_steps_override=args.max_steps)
+    train_sft(
+        args.config,
+        smoke_test=args.smoke_test if args.smoke_test else None,
+        fresh=args.fresh,
+        max_steps_override=args.max_steps,
+        init_checkpoint=args.checkpoint,
+        lr_override=args.lr,
+        epochs_override=args.epochs
+    )
