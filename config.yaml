@@ -143,19 +143,27 @@ pretrain:
 
 # 05_make_sft_data Settings
 sft_data:
-  num_samples: 80000             # 80K high-quality dialogues (fast, compact)
+  num_samples: 120000             # 80K high-quality dialogues (fast, compact)
   max_seq_len: 256               # 256 seqlen covers 100% of dialogues; 4x faster SFT!
   val_samples: 2000
   categories:
-    derja_casual: 0.35           # Casual greetings, smalltalk, daily life in Derja
-    derja_qa: 0.30               # Real Q&A / dialogue from corpora
-    math_tools: 0.15             # Math questions emitting <tool_call>calc:...
-    search_tools: 0.12           # Factual questions emitting <tool_call>search:...
-    refusals: 0.08               # "I don't know" / polite refusals
+    derja_casual: 0.15           # Balanced greetings (anti-collapse)
+    derja_qa: 0.25               # Real Q&A, traditions, and culture
+    coding_tech: 0.15            # Programming, Python, tech instructions
+    travel_tourism: 0.15         # Tunisian beaches, vacation, cities
+    math_tools: 0.15             # Math & shopping calculations emitting <tool_call>calc:...
+    search_tools: 0.10           # Factual questions emitting <tool_call>search:...
+    refusals: 0.05               # Polite boundaries & refusals
   smoke_test_samples: 1000
 
-  # Authentic HuggingFace Instruction Datasets for Versatility & High Quality
+  # Authentic HuggingFace Instruction Datasets for Versatility, Reasoning & High Quality
   external_instruction_datasets:
+    - name: "wghezaiel/SFT-Tunisian-Derja"
+      split: "train"
+      limit: 25000               # 25K authentic Tunisian Derja Q&A and conversations
+    - name: "khaled123/tunisiansynthinstract"
+      split: "train"
+      limit: 25000               # 25K Tunisian Derja instruction and reasoning dialogues
     - name: "Syrinesmati/tunisian-question-response-dataset"
       instruction_col: "instruction"
       response_col: "response"
@@ -166,11 +174,19 @@ sft_data:
       response_col: "output"
       split: "train"
       limit: 5000                # 5K technical & problem-solving dialogues in Derja/French
-    - name: "FreedomIntelligence/Alpaca-Arabic-GPT4"
+    - name: "FreedomIntelligence/Evol-Instruct-Arabic-GPT4"
+      split: "train"
+      limit: 15000               # 15K deep reasoning, science, and coding instructions in Arabic
+    - name: "MohammedNasser/Arabic_Reasoning_Instruct_QA"
       instruction_col: "instruction"
+      response_col: "answer"
+      split: "train"
+      limit: 15000               # 15K step-by-step logic, math, and factual explanations
+    - name: "hamzabouajila/derja-eng-instruct"
+      instruction_col: "input"
       response_col: "output"
       split: "train"
-      limit: 15000               # 15K general reasoning, science, and coding instructions in Arabic
+      limit: 5000                # 5K bilingual English-Derja instruction following
 
 # 06_sft Training Settings
 sft:

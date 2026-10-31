@@ -161,6 +161,34 @@ torchrun --nproc_per_node=2 04_pretrain.py
 
 ---
 
+### 🚀 1-Click Continued Refinement & Scaling on Kaggle (Recommended)
+
+If you already have a trained checkpoint (e.g. `sft_checkpoint_best.pt`), run the autonomous refinement pipeline to scale up and refine the model with **7 authentic datasets + Multi-Turn + Arabizi + DPO alignment + GGUF export**:
+
+```bash
+cd /kaggle/working
+rm -rf TunisiaLLM
+git clone https://github.com/Ca5cade/TunisiaLLM.git
+cd TunisiaLLM
+
+# Place your uploaded checkpoint (or extracted from /kaggle/input)
+mkdir -p checkpoints output
+cp /kaggle/input/tunisiallm-model/sft_checkpoint_best.pt ./checkpoints/sft_checkpoint_best.pt 2>/dev/null || true
+
+# Run the 1-click autonomous scaling pipeline
+python kaggle_scale_and_refine.py
+```
+
+This will automatically:
+1. Synthesize **120k+ dialogues** combining `wghezaiel/SFT-Tunisian-Derja`, `khaled123/tunisiansynthinstract`, `Syrinesmati`, `Tunisia_Tech`, `Evol-Instruct-Arabic`, and `Arabic_Reasoning_Instruct_QA`.
+2. Generate multi-turn stateful dialogues and Arabizi transliterations.
+3. Train with multi-GPU DDP assistant-only loss masking.
+4. Run GPU Direct Preference Optimization (DPO) to suppress hallucinations and mode collapse.
+5. Export to **FP16**, **INT8**, and **GGUF (with Ollama Modelfile)**.
+6. Run an automated verification benchmark and zip everything into `tunisiallm_refined_model.zip` ready for 1-click download!
+
+---
+
 ### Phase 4: SFT Instruction Tuning & Tool Alignment
 *Runtime: ~2.5 hours on 2x T4*
 

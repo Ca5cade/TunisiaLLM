@@ -85,7 +85,7 @@ checkpoint_info: Dict[str, str] = {}
 
 class ChatRequest(BaseModel):
     prompt: str
-    system_prompt: Optional[str] = "إنت مساعد ذكي بالدارجة التونسية. جاوب بكل طلاقة ووضوح."
+    system_prompt: Optional[str] = "إنت مساعد ذكي ولطيف بالدارجة التونسية، تعاون بوضوح وطلاقة وتجاوب ديما على قد السؤال."
     temperature: Optional[float] = 0.7
     top_p: Optional[float] = 0.9
     max_new_tokens: Optional[int] = 256

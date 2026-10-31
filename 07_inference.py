@@ -195,16 +195,36 @@ TUNISIA_KNOWLEDGE_BASE = {
 
 
 def find_tunisian_fact(prompt: str) -> Tuple[Optional[str], Optional[str]]:
-    """Fuzzy matching helper to find relevant facts from TUNISIA_KNOWLEDGE_BASE."""
+    """Accurate keyword/topic matching helper to find relevant facts from TUNISIA_KNOWLEDGE_BASE."""
     p_norm = prompt.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").lower()
+    
+    # Specific targeted trigger phrases to prevent spurious keyword matches
+    specific_matches = {
+        "القيروان": ["قيروان", "عقبة بن نافع"],
+        "قرطاج": ["قرطاج", "حنبعل", "ديدون", "اليسا"],
+        "جامعة الزيتونة": ["جامع الزيتونة", "جامعة الزيتونة"],
+        "لبلابي": ["لبلابي"],
+        "كسكسي": ["كسكسي"],
+        "كفتاجي": ["كفتاجي"],
+        "صحن تونسي": ["صحن تونسي"],
+        "كأس إفريقيا 2004": ["كاس افريقيا 2004", "كان 2004", "كاس امم افريقيا 2004"],
+        "سكان صفاقس": ["سكان صفاقس", "عدد سكان صفاقس"],
+        "مساحة تونس": ["مساحة تونس", "قداش مساحة تونس", "كبر تونس", "مساحة الجمهورية التونسية"],
+        "جبل الشعانبي": ["شعانبي", "اعلى قمة"],
+        "متحف باردو": ["متحف باردو"],
+        "استقلال تونس": ["استقلال تونس", "عيد الاستقلال", "وقتاش استقلت تونس", "تاريخ استقلال تونس"]
+    }
+
+    for topic, triggers in specific_matches.items():
+        for trig in triggers:
+            if trig in p_norm:
+                return topic, TUNISIA_KNOWLEDGE_BASE.get(topic)
+
     for topic, fact in TUNISIA_KNOWLEDGE_BASE.items():
         t_norm = topic.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").lower()
         if t_norm in p_norm:
             return topic, fact
-    for topic, fact in TUNISIA_KNOWLEDGE_BASE.items():
-        words = [w for w in topic.split() if len(w) > 2]
-        if any(w in p_norm for w in words):
-            return topic, fact
+
     return None, None
 
 
@@ -339,7 +359,7 @@ class TunisiaLLMInference:
     def stream_generate(
         self,
         prompt: str,
-        system_prompt: str = "إنت مساعد ذكي بالدارجة التونسية.",
+        system_prompt: str = "إنت مساعد ذكي ولطيف بالدارجة التونسية، تعاون بوضوح وطلاقة وتجاوب ديما على قد السؤال.",
         max_new_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.9,

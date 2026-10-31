@@ -14,6 +14,8 @@ tunisiallm_model/
 *.safetensors
 *.zip
 *.tar.gz
+*.gguf
+*.original_backup
 
 # Logs
 logs/

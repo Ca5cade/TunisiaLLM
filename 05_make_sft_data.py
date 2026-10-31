@@ -232,6 +232,87 @@ def generate_refusal_dialogue(rng: random.Random) -> Dict:
         ]
     }
 
+CODING_DERJA_TEMPLATES = [
+    (
+        ["كيفاش نعمل حلقة تكرار for في بايثون؟", "عطيني كود حلقة for في بايثون", "كيفاش نعمل boucle for في python؟", "بربي وريلي كيفاش نعمل for loop في بايثون"],
+        "باش تعمل حلقة تكرار for في بايثون، تستعمل الدالة range() كيما هكا:\n```python\nfor i in range(5):\n    print(i)\n```\nالكود هذا يدور 5 مرات ويطبع الأرقام من 0 لـ 4 يا باهي."
+    ),
+    (
+        ["كيفاش نعمل دالة في بايثون؟", "كيفاش نكتب function في Python؟", "كيفاش نعرف fonction في بايثون؟", "شنوة كود تعريف دالة في بايثون؟"],
+        "باش تصنع دالة (function) في بايثون، تستعمل الكلمة def هكا:\n```python\ndef ejma3(a, b):\n    return a + b\n```\nومن بعد تعيطلها: `print(ejma3(3, 7))` وتخرجلك 10."
+    ),
+    (
+        ["كيفاش نزيد عنصر في list في بايثون؟", "كيفاش نزيد حاجة في قائمة في python؟", "كيفاش نستعمل append في بايثون؟"],
+        "تستعمل الدالة append() هكا:\n```python\nqayma = ['تفاح', 'بنان']\nqayma.append('برتقال')\n```\nوهكا تولي القائمة فيها 3 عناصر."
+    ),
+    (
+        ["كيفاش نعمل شرط if else في بايثون؟", "كيفاش نكتب condition if في بايثون؟", "شنوة كود if else في python؟"],
+        "الشرط في بايثون ساهل برشا، هاهو مثال:\n```python\n3mor = 20\nif 3mor >= 18:\n    print('راشد ومسؤول')\nelse:\n    print('ما زلت صغير')\n```"
+    ),
+    (
+        ["شنوة الفرق بين list و tuple في بايثون؟", "شنوة الفرق بين قائمة و tuple في python؟"],
+        "الفرق الأساسي يا باهي:\n- الـ List: تتكتب بـ `[]` وتنجم تبدلها وتزيد فيها (mutable).\n- الـ Tuple: تتكتب بـ `()` وما تنجمش تبدل محتواها بعد ما تصنعها (immutable)."
+    ),
+    (
+        ["كيفاش نعمل while loop في بايثون؟", "شنوة الفرق بين while و for في بايثون؟"],
+        "الـ for loop تستعملها كي تبدا عارف عدد المرات، بينما الـ while loop تستعملها كي تحب تدور مادام شرط معين صحيح:\n```python\nx = 0\nwhile x < 3:\n    print(x)\n    x += 1\n```"
+    ),
+    (
+        ["كيفاش نقرأ فيشي في بايثون؟", "كيفاش نحل فيشي txt في python؟"],
+        "تستعمل with open هكا:\n```python\nwith open('file.txt', 'r', encoding='utf-8') as f:\n    content = f.read()\n    print(content)\n```\nوهكا يتسكر الفيشي أوتوماتيكياً."
+    ),
+    (
+        ["شنوة هو الـ API باختصار؟", "فاش يصلح الـ API؟"],
+        "الـ API هو وسيط برمجي يخلي تطبيقين أو موقعين يحكيو مع بعضهم ويتبادلو البيانات، كيما تطبيق طقس يطلب درجات الحرارة من سيرفر خارجي."
+    )
+]
+
+TRAVEL_DERJA_TEMPLATES = [
+    (
+        ["شنوة أحسن بلاصة نعمل فيها تصييفة في تونس؟", "وين تنصحني نصيف في تونس؟", "وين نمشي نصيف في الصيف في تونس؟", "أعطيني أحسن بلايص للتصييف في تونس"],
+        "في تونس تبارك الله عنا برشا بلايص روعة للتصييف:\n1. المهدية وقليبية: إذا تحب بحر صافي وبلار ورملة بيضاء من أروع ما فمة.\n2. جربة: جزيرة الأحلام والهدوء والنزل الممتازة.\n3. الحمامات وسوسة: جو شبابي وسهرات وأوتيلات وتنشيط ممتاز.\n4. طبرقة والزوارع: بحر وجبل وغابات طبيعية هادية."
+    ),
+    (
+        ["شنوة أحسن بحر في تونس؟", "أناهو أنظف وأصفى شط في تونس؟", "أحسن شطوط في تونس وين؟"],
+        "من أصفى وأنقى الشطوط في تونس:\n- شط المنصورة في قليبية (مصنف من أصفى بحورات العالم).\n- شطوط المهدية الرملية البيضاء.\n- بحر سيدي المحرص ودوز في جربة.\n- شط الرمال في بنزرت ورأس سيراط وغار الملح."
+    ),
+    (
+        ["وين تنصحني نحوس في تونس العاصمة؟", "شنوة البلايص الباهية في تونس العاصمة؟"],
+        "في تونس العاصمة ننصحك تزور:\n- المدينة العربي وجامع الزيتونة والأسواق العتيقة.\n- سيدي بوسعيد والقهوة العالية وكعبة بمبالوني سخونة.\n- قرطاج والمسرح الروماني والموانئ البونية.\n- متحف باردو العريق للفسيفساء الرومانية."
+    ),
+    (
+        ["شنوة المميز في الجنوب التونسي؟", "وين نمشي نحوس في الجنوب التونسي؟"],
+        "الجنوب التونسي عندو سحر فريد:\n- توزر ونفطة: واحات النخيل وشط الجريد وموقع تصوير حرب النجوم.\n- مطماطة: ديار الحفر البربرية تحت الأرض.\n- تطاوين: القصور الصحراوية وقصر أولاد سلطان.\n- دوز: بوابة الصحراء التونسية والركوب على الجمال."
+    ),
+    (
+        ["قلي على جزيرة جربة وشنوة فيها؟", "شنوة نزور في جربة؟"],
+        "جربة جزيرة الأحلام، مشهورة بشطوطها الهادية، حومة السوق والصناعات التقليدية، الغريبة، قرية قلالة لصناعة الفخار، وجربة هود (Djerbahood) للفنون الحضرية."
+    )
+]
+
+def generate_coding_dialogue(rng: random.Random) -> Dict:
+    sys_p = rng.choice(SYSTEM_PROMPTS)
+    q_vars, ans = rng.choice(CODING_DERJA_TEMPLATES)
+    return {
+        "system": sys_p,
+        "turns": [
+            {"role": "user", "content": rng.choice(q_vars)},
+            {"role": "assistant", "content": ans}
+        ]
+    }
+
+def generate_travel_dialogue(rng: random.Random) -> Dict:
+    sys_p = rng.choice(SYSTEM_PROMPTS)
+    q_vars, ans = rng.choice(TRAVEL_DERJA_TEMPLATES)
+    return {
+        "system": sys_p,
+        "turns": [
+            {"role": "user", "content": rng.choice(q_vars)},
+            {"role": "assistant", "content": ans}
+        ]
+    }
+
+
 
 # ==============================================================================
 # Tokenization & Loss Masking Formatter
@@ -343,7 +424,7 @@ def load_external_instruction_datasets(cfg: Dict, is_smoke: bool = False) -> Lis
         ins_col = item.get("instruction_col", "instruction")
         res_col = item.get("response_col", "response")
         split = item.get("split", "train")
-        limit = 50 if is_smoke else item.get("limit", 10000)
+        limit = 50 if is_smoke else item.get("limit", 20000)
 
         print(f"\n[*] Fetching external instruction dataset: {name} (limit={limit})...")
         try:
@@ -352,20 +433,68 @@ def load_external_instruction_datasets(cfg: Dict, is_smoke: bool = False) -> Lis
             for row in ds:
                 ins = ""
                 res = ""
-                if "conversations" in row and isinstance(row["conversations"], list):
-                    # Multi-turn or ShareGPT style: [{"from": "human", "value": "..."}, {"from": "gpt", "value": "..."}]
+                turns = []
+
+                # Format 1: Direct messages list [{'role': 'user', 'content': '...'}, {'role': 'assistant', 'content': '...'}]
+                if "messages" in row and isinstance(row["messages"], list):
+                    raw_msgs = row["messages"]
+                    for m in raw_msgs:
+                        r = m.get("role", "")
+                        c = m.get("content", "")
+                        if r in ["user", "human"] and c:
+                            turns.append({"role": "user", "content": c.strip()})
+                        elif r in ["assistant", "gpt", "bot"] and c:
+                            turns.append({"role": "assistant", "content": c.strip()})
+                    if len(turns) >= 2 and turns[0]["role"] == "user":
+                        conversations.append({
+                            "system": default_sys,
+                            "turns": turns,
+                            "category": "instruction_tuning",
+                            "source": name
+                        })
+                        cnt += 1
+                        continue
+
+                # Format 2: ShareGPT conversations [{'from': 'human', 'value': '...'}, {'from': 'gpt', 'value': '...'}]
+                elif "conversations" in row and isinstance(row["conversations"], list):
                     convs = row["conversations"]
-                    if len(convs) >= 2:
-                        ins = convs[0].get("value", "")
-                        res = convs[1].get("value", "")
-                else:
-                    ins = row.get(ins_col) or row.get("question") or row.get("prompt") or ""
+                    for c in convs:
+                        f = c.get("from", "")
+                        v = c.get("value", "")
+                        if f in ["human", "user"] and v:
+                            turns.append({"role": "user", "content": v.strip()})
+                        elif f in ["gpt", "assistant"] and v:
+                            turns.append({"role": "assistant", "content": v.strip()})
+                    if len(turns) >= 2 and turns[0]["role"] == "user":
+                        conversations.append({
+                            "system": default_sys,
+                            "turns": turns,
+                            "category": "instruction_tuning",
+                            "source": name
+                        })
+                        cnt += 1
+                        continue
+
+                # Format 3: Question / Answer composite string (e.g. khaled123/tunisiansynthinstract)
+                raw_resp = row.get("response", "") or row.get("text", "")
+                if isinstance(raw_resp, str) and ("Question:" in raw_resp or "السؤال:" in raw_resp) and ("Answer:" in raw_resp or "الجواب:" in raw_resp or "الإجابة:" in raw_resp):
+                    sep = "Answer:" if "Answer:" in raw_resp else ("الجواب:" if "الجواب:" in raw_resp else "الإجابة:")
+                    parts = raw_resp.split(sep, 1)
+                    q_part = parts[0].replace("Question:", "").replace("السؤال:", "").strip()
+                    a_part = parts[1].strip()
+                    if len(q_part) >= 5 and len(a_part) >= 2:
+                        ins = q_part
+                        res = a_part
+
+                # Format 4: Column based (instruction, input, response, answer, output)
+                if not ins and not res:
+                    ins = row.get(ins_col) or row.get("question") or row.get("prompt") or row.get("input") or ""
                     res = row.get(res_col) or row.get("response") or row.get("output") or row.get("answer") or ""
 
                 if ins and res and isinstance(ins, str) and isinstance(res, str):
                     ins = ins.strip()
                     res = res.strip()
-                    if len(ins) >= 5 and len(res) >= 5:
+                    if len(ins) >= 5 and len(res) >= 2:
                         conversations.append({
                             "system": default_sys,
                             "turns": [
@@ -376,6 +505,7 @@ def load_external_instruction_datasets(cfg: Dict, is_smoke: bool = False) -> Lis
                             "source": name
                         })
                         cnt += 1
+
             print(f"    [+] Successfully loaded {cnt:,} instruction dialogues from {name}")
         except Exception as e:
             print(f"    [!] Could not load {name} ({e}). Skipping.")
@@ -437,6 +567,8 @@ def build_sft_dataset(cfg_path: Optional[str] = None, smoke_test: Optional[bool]
     generators = {
         "derja_casual": generate_casual_chat,
         "derja_qa": generate_tunisian_qa,
+        "coding_tech": generate_coding_dialogue,
+        "travel_tourism": generate_travel_dialogue,
         "math_tools": generate_math_tool_dialogue,
         "search_tools": generate_search_tool_dialogue,
         "refusals": generate_refusal_dialogue
@@ -452,6 +584,15 @@ def build_sft_dataset(cfg_path: Optional[str] = None, smoke_test: Optional[bool]
         all_conversations.extend(external_convs)
         print(f"[+] Loaded {len(external_convs):,} external authentic instruction samples.")
 
+    # 1b. Load multi-turn structured dialogues (Lever 1)
+    try:
+        from multiturn_data import generate_multiturn_dialogues
+        mt_convs = generate_multiturn_dialogues(num_dialogues=30 if is_smoke else 3000)
+        all_conversations.extend(mt_convs)
+        print(f"[+] Loaded {len(mt_convs):,} multi-turn dialogues (shopping, coding, food, travel).")
+    except Exception as e:
+        print(f"[!] Note: multi-turn generator skipped ({e}).")
+
     # 2. Synthesize structured chat dialogues (casual Derja, math tools, search tools, refusals)
     synthetic_needed = max(0, total_samples - len(all_conversations)) if not is_smoke else max(100, total_samples)
     print(f"\n[*] Synthesizing {synthetic_needed:,} structured chat dialogues (casual, tools, culture)...")
@@ -461,6 +602,20 @@ def build_sft_dataset(cfg_path: Optional[str] = None, smoke_test: Optional[bool]
         conv = gen_fn(rng)
         conv["category"] = cat
         all_conversations.append(conv)
+
+    # 2b. Apply Arabizi transliteration augmentation to a subset of user queries (Lever 2)
+    try:
+        from arabizi_utils import derja_to_arabizi
+        arabizi_count = 0
+        for conv in all_conversations:
+            if rng.random() < 0.12 and "turns" in conv and len(conv["turns"]) > 0:
+                first_turn = conv["turns"][0]
+                if first_turn.get("role") == "user":
+                    first_turn["content"] = derja_to_arabizi(first_turn["content"], rng)
+                    arabizi_count += 1
+        print(f"[+] Applied Arabizi code-switching augmentation to {arabizi_count:,} user prompts.")
+    except Exception as e:
+        print(f"[!] Note: Arabizi augmentation skipped ({e}).")
 
     rng.shuffle(all_conversations)
     val_convs = all_conversations[:val_samples]
