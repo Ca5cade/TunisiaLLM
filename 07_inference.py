@@ -124,6 +124,27 @@ def extract_math_subexpression(expr_str: str) -> Optional[str]:
     return None
 
 
+def extract_shopping_operands(prompt: str) -> Optional[Tuple[float, float]]:
+    """Extract quantity and price from Tunisian shopping prompts."""
+    digits = [float(x) for x in re.findall(r'\b\d+(?:\.\d+)?\b', prompt)]
+    word_quantities = []
+    qty_words = {
+        "زوز": 2, "ثنين": 2, "إثنين": 2, "اثنان": 2,
+        "ثلاثة": 3, "ثلاثه": 3,
+        "أربعة": 4, "اربعة": 4,
+        "خمسة": 5, "خميس": 5,
+        "ستة": 6, "سبعة": 7, "ثمانية": 8, "تسعة": 9, "عشرة": 10
+    }
+    for w, val in qty_words.items():
+        if w in prompt:
+            word_quantities.append(float(val))
+
+    all_nums = digits + word_quantities
+    if len(all_nums) >= 2:
+        return min(all_nums), max(all_nums)
+    return None
+
+
 def sanitize_tool_math_expr(expr_str: str, user_prompt: Optional[str] = None) -> str:
     """
     Sanitize math tool expression by stripping conversational text and
@@ -139,17 +160,20 @@ def sanitize_tool_math_expr(expr_str: str, user_prompt: Optional[str] = None) ->
         cleaned = cand
 
     if user_prompt:
-        # Find all numbers in the user prompt (integers and floats)
-        prompt_nums = re.findall(r'\b\d+(?:\.\d+)?\b', user_prompt)
-        # If the user prompt describes a single-item question or simple 2-number problem
-        if len(prompt_nums) == 2:
-            q, p = prompt_nums[0], prompt_nums[1]
-            # Match quantity * price followed by spurious hallucinated addition/subtraction
-            # e.g., "3 * 1500 + 1500" -> "3 * 1500"
-            pat = rf'^\s*({q}\s*[\*xX]\s*{p}|{p}\s*[\*xX]\s*{q})\s*[\+\-].*$'
+        # Check if the query is a shopping quantity * unit price problem
+        operands = extract_shopping_operands(user_prompt)
+        if operands:
+            q_num, p_num = operands
+            q_str = str(int(q_num)) if q_num.is_integer() else str(q_num)
+            p_str = str(int(p_num)) if p_num.is_integer() else str(p_num)
+
+            # Match quantity * price followed by spurious hallucinated terms
+            pat = rf'^\s*({q_str}\s*[\*xX]\s*{p_str}|{p_str}\s*[\*xX]\s*{q_str})\s*[\+\-].*$'
             m = re.match(pat, cleaned)
             if m:
                 cleaned = m.group(1).replace('x', '*').replace('X', '*').strip()
+            elif not cand or not any(c.isdigit() for c in cleaned) or ("*" in cleaned and q_str not in cleaned):
+                cleaned = f"{q_str} * {p_str}"
 
     return cleaned
 
@@ -228,13 +252,29 @@ def find_tunisian_fact(prompt: str) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+ARABIC_NUM_MAP = {
+    "واحد": 1, "واحدة": 1, "وحده": 1,
+    "زوز": 2, "ثنين": 2, "إثنين": 2, "اثنان": 2,
+    "ثلاثة": 3, "ثلاثه": 3,
+    "أربعة": 4, "اربعة": 4,
+    "خمسة": 5, "خميس": 5,
+    "ستة": 6, "سبعة": 7, "ثمانية": 8, "تسعة": 9, "عشرة": 10
+}
+
+
 def is_math_query(prompt: str) -> bool:
     """Check if the user prompt actually requires arithmetic or shopping calculations."""
-    has_digits = bool(re.search(r'\d+', prompt))
-    has_symbols = bool(re.search(r'[\+\-\*\/\=\%]', prompt))
-    math_keywords = ["احسب", "حساب", "ضرب", "جمع", "طرح", "قسمة", "مليم", "دينار", "سوم", "شريت", "تخفيض", "صولد", "قداش حاصل", "مجموع"]
-    has_keywords = any(kw in prompt for kw in math_keywords)
-    return (has_digits and (has_symbols or has_keywords)) or (has_digits and len(re.findall(r'\d+', prompt)) >= 2)
+    p = prompt.lower()
+    has_digits = bool(re.search(r'\d+', p))
+    has_symbols = bool(re.search(r'[\+\-\*\/\=\%]', p))
+    has_num_words = any(re.search(rf'(?:\s|^){re.escape(nw)}(?:\s|$)', p) for nw in ARABIC_NUM_MAP.keys())
+    math_keywords = [
+        "قداش", "احسب", "حساب", "ضرب", "جمع", "طرح", "قسمة",
+        "مليم", "دينار", "فرنك", "سوم", "شريت", "تخفيض", "صولد", "مجموع",
+        "يطيحو", "يعملو", "تكلفة", "حكوك", "حكة", "كيلو", "باكوات", "باكو", "مع", "إلا", "في"
+    ]
+    has_keywords = any(kw in p for kw in math_keywords)
+    return has_digits or has_symbols or (has_num_words and has_keywords) or has_keywords
 
 
 def execute_search_tool(query_str: str) -> str:
@@ -401,6 +441,8 @@ class TunisiaLLMInference:
                 logits, _ = self.model(x, use_cache=True, start_pos=0)
 
         generated_ids: List[int] = []
+        token_buffer: List[int] = []
+        emitted_text = ""
         text_buffer = ""
         in_tool_call = False
         tool_buffer = ""
@@ -421,7 +463,16 @@ class TunisiaLLMInference:
                 break
 
             generated_ids.append(next_tok)
-            token_str = self.tokenizer.decode([next_tok], skip_special_tokens=False)
+            token_buffer.append(next_tok)
+
+            # Safe UTF-8 decoding to prevent partial byte replacement characters
+            decoded_full = self.tokenizer.decode(token_buffer, skip_special_tokens=False)
+            if not decoded_full.endswith('\ufffd'):
+                token_str = decoded_full[len(emitted_text):]
+                emitted_text = decoded_full
+            else:
+                token_str = ""
+
             text_buffer += token_str
 
             # Check for tool call tags
@@ -439,14 +490,6 @@ class TunisiaLLMInference:
                     tool_res = ""
 
                     if cmd_full.startswith("calc:"):
-                        # Intent validation: if prompt has no numbers and is not a math query:
-                        if not is_math_query(prompt):
-                            # Suppress spurious calc tool call on non-math queries!
-                            in_tool_call = False
-                            tool_buffer = ""
-                            text_buffer = ""
-                            continue
-
                         raw_math = cmd_full[len("calc:"):].strip()
                         clean_math = sanitize_tool_math_expr(raw_math, prompt)
                         cmd_full = f"calc: {clean_math}"
@@ -473,15 +516,24 @@ class TunisiaLLMInference:
                     in_tool_call = False
                     tool_buffer = ""
                     text_buffer = ""
+                    token_buffer = []
+                    emitted_text = ""
                     continue
             else:
-                yield token_str
+                if token_str and self.tool_call_start not in text_buffer:
+                    yield token_str
 
             # Autoregressive next token step
             tok_tensor = torch.tensor([[next_tok]], dtype=torch.long, device=self.device)
             with torch.no_grad():
                 logits, _ = self.model(tok_tensor, use_cache=True, start_pos=cur_pos)
             cur_pos += 1
+
+        # Final flush if any remaining characters in buffer
+        if token_buffer and not in_tool_call:
+            final_text = self.tokenizer.decode(token_buffer, skip_special_tokens=True)
+            if len(final_text) > len(emitted_text):
+                yield final_text[len(emitted_text):]
 
         self.model.reset_cache()
 
