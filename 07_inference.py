@@ -255,12 +255,13 @@ def execute_search_tool(query_str: str) -> str:
 
 def sample_next_token(
     logits: torch.Tensor,
-    temperature: float = 0.7,
-    top_p: float = 0.9,
-    repetition_penalty: float = 1.15,
+    temperature: float = 0.2,
+    top_p: float = 0.85,
+    top_k: int = 40,
+    repetition_penalty: float = 1.2,
     generated_tokens: Optional[List[int]] = None
 ) -> int:
-    """Sample next token with repetition penalty, temperature, and top-p filtering."""
+    """Sample next token with repetition penalty, top-k, temperature, and top-p filtering."""
     # Apply repetition penalty
     if generated_tokens and repetition_penalty != 1.0:
         for prev_token in set(generated_tokens):
@@ -273,6 +274,11 @@ def sample_next_token(
         return int(torch.argmax(logits, dim=-1).item())
 
     logits = logits / temperature
+
+    # Top-K filtering
+    if top_k > 0:
+        v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+        logits[logits < v[:, [-1]]] = float("-inf")
 
     # Nucleus (top-p) filtering
     if 0.0 < top_p < 1.0:
@@ -361,9 +367,10 @@ class TunisiaLLMInference:
         prompt: str,
         system_prompt: str = "إنت مساعد ذكي ولطيف بالدارجة التونسية، تعاون بوضوح وطلاقة وتجاوب ديما على قد السؤال.",
         max_new_tokens: int = 256,
-        temperature: float = 0.7,
-        top_p: float = 0.9,
-        repetition_penalty: float = 1.15
+        temperature: float = 0.2,
+        top_p: float = 0.85,
+        top_k: int = 40,
+        repetition_penalty: float = 1.2
     ) -> Generator[str, None, None]:
         """
         Stream generated tokens with KV cache and automated tool-execution loop.
@@ -405,6 +412,7 @@ class TunisiaLLMInference:
                 last_logits,
                 temperature=temperature,
                 top_p=top_p,
+                top_k=top_k,
                 repetition_penalty=repetition_penalty,
                 generated_tokens=generated_ids
             )
@@ -487,7 +495,8 @@ class TunisiaLLMInference:
     def export_int8_cpu(self, output_path: str) -> None:
         """Export dynamic INT8 quantized model for ultra-low-latency CPU serving."""
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        cpu_model = self.model.cpu().float()
+        import copy
+        cpu_model = copy.deepcopy(self.model).cpu().float()
         quantized_model = torch.ao.quantization.quantize_dynamic(
             cpu_model, {nn.Linear}, dtype=torch.qint8
         )
@@ -575,6 +584,10 @@ if __name__ == "__main__":
     parser.add_argument("--benchmark", action="store_true", help="Run throughput benchmark")
     parser.add_argument("--export-fp16", type=str, default=None, help="Export FP16 weights path")
     parser.add_argument("--export-int8", type=str, default=None, help="Export INT8 quantized weights path")
+    parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature (lower = more coherent/deterministic)")
+    parser.add_argument("--top-p", type=float, default=0.85, help="Top-p nucleus sampling threshold")
+    parser.add_argument("--top-k", type=int, default=40, help="Top-k filtering limit")
+    parser.add_argument("--repetition-penalty", type=float, default=1.2, help="Repetition penalty")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -584,10 +597,18 @@ if __name__ == "__main__":
         engine.export_fp16(args.export_fp16)
     if args.export_int8:
         engine.export_int8_cpu(args.export_int8)
+    if (args.export_fp16 or args.export_int8) and not args.prompt and not args.benchmark and not args.chat:
+        sys.exit(0)
 
     if args.prompt:
         print(f"\nPrompt: {args.prompt}\nAssistant: ", end="", flush=True)
-        for chunk in engine.stream_generate(args.prompt):
+        for chunk in engine.stream_generate(
+            args.prompt,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
+            repetition_penalty=args.repetition_penalty
+        ):
             print(chunk, end="", flush=True)
         print("\n")
     elif args.benchmark:
@@ -598,6 +619,12 @@ if __name__ == "__main__":
         # Default run test generation
         test_q = "عسلامة يا باهي، قداش 45 في 12؟"
         print(f"\nDefault Test Prompt: {test_q}\nAssistant: ", end="", flush=True)
-        for chunk in engine.stream_generate(test_q):
+        for chunk in engine.stream_generate(
+            test_q,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
+            repetition_penalty=args.repetition_penalty
+        ):
             print(chunk, end="", flush=True)
         print("\n")

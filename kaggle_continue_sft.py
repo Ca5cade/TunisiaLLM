@@ -23,7 +23,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="TunisiaLLM Autonomous Model Scaling & Refinement")
     parser.add_argument("--skip-sft", action="store_true", help="Skip dataset prep and SFT fine-tuning, resume straight from DPO alignment")
     parser.add_argument("--skip-data", action="store_true", help="Skip dataset generation")
-    parser.add_argument("--dpo-steps", type=int, default=80, help="Number of DPO optimization steps")
+    parser.add_argument("--skip-dpo", action="store_true", help="Skip DPO alignment and use the pure SFT model directly")
+    parser.add_argument("--dpo-steps", type=int, default=50, help="Number of DPO optimization steps")
+    parser.add_argument("--dpo-lr", type=float, default=3e-6, help="DPO learning rate")
+    parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature for benchmark")
+    parser.add_argument("--top-k", type=int, default=40, help="Top-k filtering for benchmark")
+    parser.add_argument("--checkpoint", type=str, default=None, help="Explicit checkpoint path to use")
     args = parser.parse_args()
 
     print("=" * 80)
@@ -153,24 +158,31 @@ def main() -> None:
         if os.path.isfile(ckpt_target):
             break
 
-    # 6. Step 3: Direct Preference Optimization (DPO) Alignment
-    print("\n" + "=" * 80)
-    print("STEP 3: LAUNCHING DIRECT PREFERENCE OPTIMIZATION (DPO) ALIGNMENT (08_dpo.py)")
-    print("Penalizing mode collapse, empty greetings, and calculation errors")
-    print("=" * 80)
+    if args.checkpoint and os.path.isfile(args.checkpoint):
+        ckpt_target = args.checkpoint
+        print(f"[+] Explicit checkpoint specified: {ckpt_target}")
 
-    dpo_device = "cuda" if torch.cuda.is_available() else "cpu"
-    dpo_cmd = [
-        sys.executable, "-u", "08_dpo.py",
-        "--checkpoint", ckpt_target,
-        "--tokenizer", "tokenizer.json",
-        "--output", ckpt_target,
-        "--steps", str(args.dpo_steps),
-        "--lr", "1.5e-5",
-        "--device", dpo_device
-    ]
-    print(f"Running command: {' '.join(dpo_cmd)}\n")
-    subprocess.run(dpo_cmd, check=True)
+    # 6. Step 3: Direct Preference Optimization (DPO) Alignment
+    if not args.skip_dpo:
+        print("\n" + "=" * 80)
+        print("STEP 3: LAUNCHING DIRECT PREFERENCE OPTIMIZATION (DPO) ALIGNMENT (08_dpo.py)")
+        print("Penalizing mode collapse, empty greetings, and calculation errors")
+        print("=" * 80)
+
+        dpo_device = "cuda" if torch.cuda.is_available() else "cpu"
+        dpo_cmd = [
+            sys.executable, "-u", "08_dpo.py",
+            "--checkpoint", ckpt_target,
+            "--tokenizer", "tokenizer.json",
+            "--output", ckpt_target,
+            "--steps", str(args.dpo_steps),
+            "--lr", str(args.dpo_lr),
+            "--device", dpo_device
+        ]
+        print(f"Running command: {' '.join(dpo_cmd)}\n")
+        subprocess.run(dpo_cmd, check=True)
+    else:
+        print("\n[*] Step 3 (DPO Alignment) skipped as requested. Using pure SFT weights.")
 
     # 7. Step 4: Multi-Format Low-Bit Exporting
     print("\n" + "=" * 80)
@@ -198,6 +210,7 @@ def main() -> None:
     # 8. Step 5: Verification & Benchmark Suite
     print("\n" + "=" * 80)
     print("STEP 5: COMPREHENSIVE VERIFICATION BENCHMARK (07_inference.py)")
+    print(f"Sampling Config: Temperature={args.temperature} | Top-K={args.top_k}")
     print("=" * 80)
 
     test_prompts = [
@@ -216,7 +229,9 @@ def main() -> None:
             sys.executable, "-u", "07_inference.py",
             "--config", "config.yaml",
             "--checkpoint", ckpt_target,
-            "--prompt", prompt
+            "--prompt", prompt,
+            "--temperature", str(args.temperature),
+            "--top-k", str(args.top_k)
         ])
 
     # 9. Step 6: 1-Click Packaging for Download

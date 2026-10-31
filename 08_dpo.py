@@ -144,7 +144,8 @@ def generate_dpo_pairs() -> List[Dict[str, str]]:
 
 
 def load_external_dpo_pairs(limit: int = 1500) -> List[Dict[str, str]]:
-    """Load authentic Tunisian DPO preference dataset."""
+    """Load authentic Tunisian DPO preference dataset, strictly filtering for authentic Arabic/Derja text."""
+    import re
     pairs = []
     try:
         from datasets import load_dataset
@@ -158,14 +159,17 @@ def load_external_dpo_pairs(limit: int = 1500) -> List[Dict[str, str]]:
                 p = p.strip()
                 c = c.strip()
                 r = r.strip()
+                # Ensure it contains genuine Arabic/Derja characters to avoid English leakage
                 if len(p) >= 10 and len(c) >= 1 and len(r) >= 1:
-                    pairs.append({
-                        "prompt": p,
-                        "chosen": c,
-                        "rejected": r,
-                        "category": "tunisian_dpo_corpus"
-                    })
-        print(f"  [+] Loaded {len(pairs):,} authentic DPO pairs from wghezaiel/DPO-Tunisian-Derja.", flush=True)
+                    has_ar = bool(re.search(r'[\u0600-\u06FF]', p)) and bool(re.search(r'[\u0600-\u06FF]', c))
+                    if has_ar:
+                        pairs.append({
+                            "prompt": p,
+                            "chosen": c,
+                            "rejected": r,
+                            "category": "tunisian_dpo_corpus"
+                        })
+        print(f"  [+] Loaded {len(pairs):,} authentic Derja DPO pairs from wghezaiel/DPO-Tunisian-Derja.", flush=True)
     except Exception as e:
         print(f"  [!] Note: External DPO dataset load skipped ({e}).", flush=True)
     return pairs
@@ -218,15 +222,17 @@ def train_dpo(
     tokenizer_path: str,
     output_path: str,
     beta: float = 0.1,
-    lr: float = 1.0e-5,
-    steps: int = 40,
+    lr: float = 3.0e-6,
+    steps: int = 50,
+    accum_steps: int = 4,
     device_str: Optional[str] = None
 ) -> None:
+    import copy
     if device_str is None:
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
     print("=" * 80, flush=True)
     print("TUNISIALLM: DIRECT PREFERENCE OPTIMIZATION (DPO) ENGINE")
-    print(f"Beta: {beta} | Learning Rate: {lr} | Steps: {steps}")
+    print(f"Beta: {beta} | Learning Rate: {lr} | Steps: {steps} | Accum Steps: {accum_steps}")
     print("=" * 80, flush=True)
 
     device = torch.device(device_str)
@@ -251,7 +257,7 @@ def train_dpo(
         param.requires_grad = False
 
     pairs = generate_dpo_pairs()
-    ext_dpo = load_external_dpo_pairs(limit=1500)
+    ext_dpo = load_external_dpo_pairs(limit=1000)
     if ext_dpo:
         pairs.extend(ext_dpo)
         random.Random(42).shuffle(pairs)
@@ -264,6 +270,10 @@ def train_dpo(
     print("\n[*] Starting DPO Optimization loop...", flush=True)
     t0 = time.time()
     best_loss = float("inf")
+    best_state_dict = copy.deepcopy(policy_model.state_dict())
+
+    optimizer.zero_grad()
+    accum_loss = 0.0
 
     for step in range(steps):
         # Sample a preference pair
@@ -297,22 +307,33 @@ def train_dpo(
         margin = beta * (pi_logr_w - pi_logr_l)
 
         # Loss = -log sigmoid(margin) = softplus(-margin)
-        loss = F.softplus(-margin).mean()
-
-        optimizer.zero_grad()
+        loss = F.softplus(-margin).mean() / accum_steps
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(policy_model.parameters(), 1.0)
-        optimizer.step()
+        accum_loss += loss.item() * accum_steps
+
+        if (step + 1) % accum_steps == 0 or (step + 1) == steps:
+            torch.nn.utils.clip_grad_norm_(policy_model.parameters(), 0.5)
+            optimizer.step()
+            optimizer.zero_grad()
+
+            cur_avg_loss = accum_loss / accum_steps
+            if cur_avg_loss < best_loss and margin.item() > 0:
+                best_loss = cur_avg_loss
+                best_state_dict = copy.deepcopy(policy_model.state_dict())
+            accum_loss = 0.0
 
         acc = (margin > 0).float().item()
 
         if (step + 1) % 10 == 0 or step == 0:
             elapsed = time.time() - t0
             speed = elapsed / (step + 1)
-            print(f"  Step {step+1:02d}/{steps} | DPO Loss: {loss.item():.4f} | Margin: {margin.item():+.3f} | Accuracy: {acc*100:.0f}% | Speed: {speed:.2f}s/step", flush=True)
+            print(f"  Step {step+1:02d}/{steps} | DPO Loss: {(loss.item()*accum_steps):.4f} | Margin: {margin.item():+.3f} | Accuracy: {acc*100:.0f}% | Speed: {speed:.2f}s/step", flush=True)
 
     elapsed_total = time.time() - t0
     print(f"\n[OK] DPO Optimization complete in {elapsed_total:.1f}s!", flush=True)
+
+    # Restore best policy weights
+    policy_model.load_state_dict(best_state_dict)
 
     # Save aligned checkpoint
     save_targets = [
