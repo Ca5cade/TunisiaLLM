@@ -35,22 +35,17 @@ TunisiaLLMInference = inf_mod.TunisiaLLMInference
 
 def resolve_checkpoint(custom_path: Optional[str] = None) -> Tuple[str, str]:
     """
-    Find best available checkpoint, auto-extracting tunisiallm_model.zip if needed.
+    Find best available checkpoint.
     Returns (checkpoint_path, display_name).
     """
     if custom_path and os.path.isfile(custom_path):
         return custom_path, os.path.basename(custom_path)
 
-    # 1. Check inside extracted tunisiallm_model directory
-    extracted_sft = os.path.join(REPO_ROOT, "tunisiallm_model", "sft_checkpoint_best.pt")
-    if os.path.isfile(extracted_sft) and os.path.getsize(extracted_sft) > 1000000:
-        return extracted_sft, "tunisiallm_model (SFT Best)"
-
-    # 2. Check in checkpoints directory
+    # 1. Check in checkpoints directory for clean SFT models
     ckpt_dir = os.path.join(REPO_ROOT, "checkpoints")
     candidates = [
-        ("sft_checkpoint_best.pt", "SFT Checkpoint Best"),
-        ("sft_checkpoint_final.pt", "SFT Checkpoint Final"),
+        ("sft_checkpoint_final.pt", "TunisiaLLM SFT (Clean Derja)"),
+        ("sft_checkpoint_best.pt", "TunisiaLLM SFT Best"),
         ("checkpoint_best.pt", "Pretrained Best"),
         ("checkpoint_latest.pt", "Pretrained Latest"),
     ]
@@ -59,19 +54,13 @@ def resolve_checkpoint(custom_path: Optional[str] = None) -> Tuple[str, str]:
         if os.path.isfile(full_path) and os.path.getsize(full_path) > 1000000:
             return full_path, label
 
-    # 3. Check for tunisiallm_model.zip
-    zip_path = os.path.join(REPO_ROOT, "tunisiallm_model.zip")
-    if os.path.isfile(zip_path):
-        target_dir = os.path.join(REPO_ROOT, "tunisiallm_model")
-        print(f"[*] Extracting {zip_path} into {target_dir}...")
-        os.makedirs(target_dir, exist_ok=True)
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(target_dir)
-        if os.path.isfile(extracted_sft):
-            return extracted_sft, "Extracted Zip (SFT Best)"
+    # 2. Check inside extracted tunisiallm_model directory
+    extracted_sft = os.path.join(REPO_ROOT, "tunisiallm_model", "sft_checkpoint_best.pt")
+    if os.path.isfile(extracted_sft) and os.path.getsize(extracted_sft) > 1000000:
+        return extracted_sft, "tunisiallm_model (SFT Best)"
 
     # Default fallback
-    return os.path.join(ckpt_dir, "sft_checkpoint_best.pt"), "Default (SFT Best)"
+    return os.path.join(ckpt_dir, "sft_checkpoint_final.pt"), "Default (SFT Final)"
 
 
 # ==============================================================================
@@ -86,10 +75,10 @@ checkpoint_info: Dict[str, str] = {}
 class ChatRequest(BaseModel):
     prompt: str
     system_prompt: Optional[str] = "إنت مساعد ذكي ولطيف بالدارجة التونسية، تعاون بوضوح وطلاقة وتجاوب ديما على قد السؤال."
-    temperature: Optional[float] = 0.7
-    top_p: Optional[float] = 0.9
+    temperature: Optional[float] = 0.2
+    top_p: Optional[float] = 0.85
     max_new_tokens: Optional[int] = 256
-    repetition_penalty: Optional[float] = 1.15
+    repetition_penalty: Optional[float] = 1.2
     chat_history: Optional[List[Dict[str, str]]] = None
 
 
@@ -125,11 +114,12 @@ async def chat_endpoint(req: ChatRequest):
         try:
             tokens_stream = engine.stream_generate(
                 prompt=user_prompt,
-                system_prompt=req.system_prompt or "إنت مساعد ذكي بالدارجة التونسية.",
+                system_prompt=req.system_prompt or "إنت مساعد ذكي ولطيف بالدارجة التونسية، تعاون بوضوح وطلاقة وتجاوب ديما على قد السؤال.",
                 max_new_tokens=req.max_new_tokens or 256,
-                temperature=req.temperature or 0.7,
-                top_p=req.top_p or 0.9,
-                repetition_penalty=req.repetition_penalty or 1.15
+                temperature=req.temperature if req.temperature is not None else 0.2,
+                top_p=req.top_p if req.top_p is not None else 0.85,
+                top_k=40,
+                repetition_penalty=req.repetition_penalty if req.repetition_penalty is not None else 1.2
             )
 
             for token in tokens_stream:
