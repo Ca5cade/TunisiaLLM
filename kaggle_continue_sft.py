@@ -104,7 +104,7 @@ def main() -> None:
 
     if n_gpus >= 2:
         sft_cmd = [
-            "torchrun", f"--nproc_per_node={n_gpus}", "06_sft.py",
+            sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={n_gpus}", "06_sft.py",
             "--config", "config.yaml",
             "--checkpoint", ckpt_target,
             "--lr", "3e-5",
