@@ -16,9 +16,16 @@ import glob
 import shutil
 import zipfile
 import subprocess
+import argparse
 import torch
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="TunisiaLLM Autonomous Model Scaling & Refinement")
+    parser.add_argument("--skip-sft", action="store_true", help="Skip dataset prep and SFT fine-tuning, resume straight from DPO alignment")
+    parser.add_argument("--skip-data", action="store_true", help="Skip dataset generation")
+    parser.add_argument("--dpo-steps", type=int, default=80, help="Number of DPO optimization steps")
+    args = parser.parse_args()
+
     print("=" * 80)
     print("🇹🇳 TUNISIALLM: AUTONOMOUS MODEL SCALING & REFINEMENT PIPELINE (KAGGLE)")
     print("=" * 80)
@@ -91,36 +98,60 @@ def main() -> None:
         shutil.copyfile(ckpt_target, local_tunisiallm_ckpt)
 
     # 4. Step 1: Scaled SFT Dataset Generation
-    print("\n" + "=" * 80)
-    print("STEP 1: PREPARING SCALED SFT DATASET (05_make_sft_data.py)")
-    print("Includes 7 authentic Derja/Arabic corpora, multi-turn dialogues, & Arabizi")
-    print("=" * 80)
-    subprocess.run([sys.executable, "-u", "05_make_sft_data.py", "--config", "config.yaml", "--force"], check=True)
+    if not args.skip_data and not args.skip_sft:
+        print("\n" + "=" * 80)
+        print("STEP 1: PREPARING SCALED SFT DATASET (05_make_sft_data.py)")
+        print("Includes 7 authentic Derja/Arabic corpora, multi-turn dialogues, & Arabizi")
+        print("=" * 80)
+        subprocess.run([sys.executable, "-u", "05_make_sft_data.py", "--config", "config.yaml", "--force"], check=True)
+    else:
+        print("\n[*] Step 1 (Dataset generation) skipped as requested.")
 
     # 5. Step 2: Multi-GPU SFT Instruction Fine-Tuning
-    print("\n" + "=" * 80)
-    print("STEP 2: LAUNCHING DISTRIBUTED SFT FINE-TUNING (06_sft.py)")
-    print("=" * 80)
+    if not args.skip_sft:
+        print("\n" + "=" * 80)
+        print("STEP 2: LAUNCHING DISTRIBUTED SFT FINE-TUNING (06_sft.py)")
+        print("=" * 80)
 
-    if n_gpus >= 2:
-        sft_cmd = [
-            sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={n_gpus}", "06_sft.py",
-            "--config", "config.yaml",
-            "--checkpoint", ckpt_target,
-            "--lr", "3e-5",
-            "--epochs", "1"
-        ]
+        if n_gpus >= 2:
+            sft_cmd = [
+                sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={n_gpus}", "06_sft.py",
+                "--config", "config.yaml",
+                "--checkpoint", ckpt_target,
+                "--lr", "3e-5",
+                "--epochs", "1"
+            ]
+        else:
+            sft_cmd = [
+                sys.executable, "-u", "06_sft.py",
+                "--config", "config.yaml",
+                "--checkpoint", ckpt_target,
+                "--lr", "3e-5",
+                "--epochs", "1"
+            ]
+
+        print(f"Running command: {' '.join(sft_cmd)}\n")
+        subprocess.run(sft_cmd, check=True)
     else:
-        sft_cmd = [
-            sys.executable, "-u", "06_sft.py",
-            "--config", "config.yaml",
-            "--checkpoint", ckpt_target,
-            "--lr", "3e-5",
-            "--epochs", "1"
-        ]
+        print("\n[*] Step 2 (SFT Fine-Tuning) skipped as requested.")
 
-    print(f"Running command: {' '.join(sft_cmd)}\n")
-    subprocess.run(sft_cmd, check=True)
+    # Synchronize and discover newly trained checkpoint from Step 2
+    for candidate_dir in ["/kaggle/working/checkpoints", os.path.join(repo_root, "checkpoints")]:
+        for candidate_name in ["sft_checkpoint_best.pt", "sft_checkpoint_final.pt"]:
+            cand_p = os.path.join(candidate_dir, candidate_name)
+            if os.path.isfile(cand_p):
+                print(f"[+] Found fresh SFT checkpoint: {cand_p} ({os.path.getsize(cand_p)/(1024**2):.1f} MB)")
+                ckpt_target = cand_p
+                # Sync into repo checkpoints and tunisiallm_model
+                repo_best = os.path.join(repo_root, "checkpoints", "sft_checkpoint_best.pt")
+                repo_tun = os.path.join(repo_root, "tunisiallm_model", "sft_checkpoint_best.pt")
+                if cand_p != repo_best:
+                    shutil.copyfile(cand_p, repo_best)
+                if cand_p != repo_tun:
+                    shutil.copyfile(cand_p, repo_tun)
+                break
+        if os.path.isfile(ckpt_target):
+            break
 
     # 6. Step 3: Direct Preference Optimization (DPO) Alignment
     print("\n" + "=" * 80)
@@ -134,7 +165,7 @@ def main() -> None:
         "--checkpoint", ckpt_target,
         "--tokenizer", "tokenizer.json",
         "--output", ckpt_target,
-        "--steps", "80",
+        "--steps", str(args.dpo_steps),
         "--lr", "1.5e-5",
         "--device", dpo_device
     ]

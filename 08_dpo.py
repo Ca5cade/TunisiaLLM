@@ -16,7 +16,7 @@ import math
 import time
 import random
 import argparse
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional, Any
 
 import torch
 import torch.nn as nn
@@ -320,6 +320,8 @@ def train_dpo(
         os.path.join(REPO_ROOT, "tunisiallm_model", "sft_checkpoint_best.pt"),
         os.path.join(REPO_ROOT, "checkpoints", "sft_checkpoint_best.pt")
     ]
+    if os.path.isdir("/kaggle/working/checkpoints"):
+        save_targets.append("/kaggle/working/checkpoints/sft_checkpoint_best.pt")
     aligned_ckpt = {
         "step": ckpt.get("step", 660) + steps,
         "epoch": 3,
