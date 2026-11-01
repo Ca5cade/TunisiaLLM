@@ -249,73 +249,89 @@ def train_sft(
         total_steps = min(total_steps, max_steps_cfg)
     warmup_steps = int(total_steps * sft_cfg.get("warmup_ratio", 0.05))
 
-    # 3. Model Initialization
-    m_cfg = cfg["model"]
-    preset = m_cfg.get("preset", "80M")
+    # 3. Checkpoint Discovery & Architecture Resolution
+    m_cfg = cfg['model']
+    preset = m_cfg.get('preset', '500M')
     seq_len = train_dataset.input_ids.shape[1]
 
-    model_config = ModelConfig.from_preset(
-        preset,
-        vocab_size=cfg["tokenizer"]["vocab_size"],
-        max_seq_len=seq_len
-    )
-
-    model_config.gradient_checkpointing = sft_cfg.get("gradient_checkpointing", False) or cfg.get("pretrain", {}).get("gradient_checkpointing", False)
-    model = TunisiaLLM(model_config).to(device)
-    raw_model = model
-
-    # 4. Load Pretrained Weights or Resume SFT
-    sft_latest_ckpt = os.path.join(checkpoint_dir, "sft_checkpoint_latest.pt")
-    pretrained_best = os.path.join(checkpoint_dir, "checkpoint_best.pt")
-    pretrained_latest = os.path.join(checkpoint_dir, "checkpoint_latest.pt")
-
-    start_epoch = 0
-    start_step = 0
-    best_val_loss = float("inf")
-
     custom_ckpt_path = None
+    state_dict = None
     if init_checkpoint:
         for p in [
             init_checkpoint,
             os.path.join(checkpoint_dir, init_checkpoint),
-            os.path.join("tunisiallm_model", init_checkpoint),
-            os.path.join("checkpoints", init_checkpoint)
+            os.path.join('tunisiallm_model', init_checkpoint),
+            os.path.join('checkpoints', init_checkpoint)
         ]:
             if os.path.isfile(p):
                 custom_ckpt_path = p
                 break
         if custom_ckpt_path is None:
-            raise FileNotFoundError(f"Specified checkpoint not found: {init_checkpoint}")
+            if master_process:
+                print(f"[!] Warning: Checkpoint '{init_checkpoint}' not found on disk. Initializing fresh model weights.")
 
     if custom_ckpt_path is not None:
         if master_process:
-            print(f"[*] Initializing model weights from specified checkpoint: {custom_ckpt_path}")
+            print(f"[*] Inspecting model weights from: {custom_ckpt_path}")
         ckpt = torch.load(custom_ckpt_path, map_location=device)
-        state_dict = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
+        state_dict = ckpt['model_state_dict'] if 'model_state_dict' in ckpt else ckpt
+        if 'tok_embeddings.weight' in state_dict:
+            ckpt_dim = state_dict['tok_embeddings.weight'].shape[1]
+            if ckpt_dim == 1280:
+                preset = '500M'
+            elif ckpt_dim == 672:
+                preset = '80M'
+                if master_process:
+                    print(f"[*] Checkpoint is 80M. Adapting architecture preset to 80M.")
+            elif ckpt_dim == 768:
+                preset = '125M'
+            elif ckpt_dim == 448:
+                preset = '30M'
+        best_val_loss = ckpt.get('best_val_loss', float('inf'))
+
+    model_config = ModelConfig.from_preset(
+        preset,
+        vocab_size=cfg['tokenizer']['vocab_size'],
+        max_seq_len=seq_len
+    )
+    model_config.gradient_checkpointing = sft_cfg.get('gradient_checkpointing', False) or cfg.get('pretrain', {}).get('gradient_checkpointing', False)
+    model = TunisiaLLM(model_config).to(device)
+    raw_model = model
+
+    # 4. Load Weights into Model
+    sft_latest_ckpt = os.path.join(checkpoint_dir, 'sft_checkpoint_latest.pt')
+    pretrained_best = os.path.join(checkpoint_dir, 'checkpoint_best.pt')
+    pretrained_latest = os.path.join(checkpoint_dir, 'checkpoint_latest.pt')
+
+    start_epoch = 0
+    start_step = 0
+    best_val_loss = float('inf')
+
+    if state_dict is not None:
+        if master_process:
+            print(f"[+] Loaded weights into {preset} model successfully.")
         raw_model.load_state_dict(state_dict, strict=False)
-        best_val_loss = ckpt.get("best_val_loss", float("inf"))
     elif not fresh and os.path.isfile(sft_latest_ckpt):
         if master_process:
             print(f"[*] Resuming from ongoing SFT checkpoint: {sft_latest_ckpt}")
         ckpt = torch.load(sft_latest_ckpt, map_location=device)
-        raw_model.load_state_dict(ckpt["model_state_dict"])
-        start_step = ckpt.get("step", 0) + 1
-        start_epoch = ckpt.get("epoch", 0)
-        best_val_loss = ckpt.get("best_val_loss", float("inf"))
+        raw_model.load_state_dict(ckpt['model_state_dict'])
+        start_step = ckpt.get('step', 0) + 1
+        start_epoch = ckpt.get('epoch', 0)
+        best_val_loss = ckpt.get('best_val_loss', float('inf'))
     elif os.path.isfile(pretrained_best):
         if master_process:
             print(f"[*] Initializing SFT from best pretrained checkpoint: {pretrained_best}")
         ckpt = torch.load(pretrained_best, map_location=device)
-        raw_model.load_state_dict(ckpt["model_state_dict"], strict=False)
+        raw_model.load_state_dict(ckpt['model_state_dict'], strict=False)
     elif os.path.isfile(pretrained_latest):
         if master_process:
             print(f"[*] Initializing SFT from latest pretrained checkpoint: {pretrained_latest}")
         ckpt = torch.load(pretrained_latest, map_location=device)
-        raw_model.load_state_dict(ckpt["model_state_dict"], strict=False)
+        raw_model.load_state_dict(ckpt['model_state_dict'], strict=False)
     else:
         if master_process:
-            print("[!] Warning: No pretrained checkpoint found. Initializing from scratch for test...")
-
+            print(f"[+] Initializing fresh {preset} model weights from scratch.")
     if ddp:
         model = DDP(model, device_ids=[local_rank], broadcast_buffers=False)
         raw_model = model.module

@@ -122,18 +122,21 @@ def main() -> None:
             sft_cmd = [
                 sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={n_gpus}", "06_sft.py",
                 "--config", "config.yaml",
-                "--checkpoint", ckpt_target,
-                "--lr", "3e-5",
+                "--lr", "2.5e-5",
                 "--epochs", "1"
             ]
         else:
             sft_cmd = [
                 sys.executable, "-u", "06_sft.py",
                 "--config", "config.yaml",
-                "--checkpoint", ckpt_target,
-                "--lr", "3e-5",
+                "--lr", "2.5e-5",
                 "--epochs", "1"
             ]
+
+        if os.path.isfile(ckpt_target):
+            sft_cmd.extend(["--checkpoint", ckpt_target])
+        else:
+            sft_cmd.append("--fresh")
 
         print(f"Running command: {' '.join(sft_cmd)}\n")
         subprocess.run(sft_cmd, check=True)
@@ -164,56 +167,63 @@ def main() -> None:
 
     # 6. Step 3: Direct Preference Optimization (DPO) Alignment
     if not args.skip_dpo:
-        print("\n" + "=" * 80)
-        print("STEP 3: LAUNCHING DIRECT PREFERENCE OPTIMIZATION (DPO) ALIGNMENT (08_dpo.py)")
-        print("Penalizing mode collapse, empty greetings, and calculation errors")
-        print("=" * 80)
+        if os.path.isfile(ckpt_target):
+            print("\n" + "=" * 80)
+            print("STEP 3: LAUNCHING DIRECT PREFERENCE OPTIMIZATION (DPO) ALIGNMENT (08_dpo.py)")
+            print("Penalizing mode collapse, empty greetings, and calculation errors")
+            print("=" * 80)
 
-        dpo_device = "cuda" if torch.cuda.is_available() else "cpu"
-        dpo_cmd = [
-            sys.executable, "-u", "08_dpo.py",
-            "--checkpoint", ckpt_target,
-            "--tokenizer", "tokenizer.json",
-            "--output", ckpt_target,
-            "--steps", str(args.dpo_steps),
-            "--lr", str(args.dpo_lr),
-            "--device", dpo_device
-        ]
-        print(f"Running command: {' '.join(dpo_cmd)}\n")
-        subprocess.run(dpo_cmd, check=True)
+            dpo_device = "cuda" if torch.cuda.is_available() else "cpu"
+            dpo_cmd = [
+                sys.executable, "-u", "08_dpo.py",
+                "--checkpoint", ckpt_target,
+                "--tokenizer", "tokenizer.json",
+                "--output", ckpt_target,
+                "--steps", str(args.dpo_steps),
+                "--lr", str(args.dpo_lr),
+                "--device", dpo_device
+            ]
+            print(f"Running command: {' '.join(dpo_cmd)}\n")
+            subprocess.run(dpo_cmd, check=True)
+        else:
+            print("\n[*] Step 3 (DPO Alignment) skipped: Checkpoint not found.")
     else:
         print("\n[*] Step 3 (DPO Alignment) skipped as requested. Using pure SFT weights.")
 
     # 7. Step 4: Multi-Format Low-Bit Exporting
-    print("\n" + "=" * 80)
-    print("STEP 4: MULTI-FORMAT EXPORTS (FP16, INT8, GGUF, OLLAMA)")
-    print("=" * 80)
+    gguf_output = ""
+    if os.path.isfile(ckpt_target):
+        print("\n" + "=" * 80)
+        print("STEP 4: MULTI-FORMAT EXPORTS (FP16, INT8, GGUF, OLLAMA)")
+        print("=" * 80)
 
-    # PyTorch FP16 and Dynamic INT8
-    subprocess.run([
-        sys.executable, "-u", "07_inference.py",
-        "--checkpoint", ckpt_target,
-        "--export-fp16", os.path.join("output", "model_fp16.pt"),
-        "--export-int8", os.path.join("output", "model_int8.pt")
-    ])
+        # PyTorch FP16 and Dynamic INT8
+        subprocess.run([
+            sys.executable, "-u", "07_inference.py",
+            "--checkpoint", ckpt_target,
+            "--export-fp16", os.path.join("output", "model_fp16.pt"),
+            "--export-int8", os.path.join("output", "model_int8.pt")
+        ])
 
-    # GGUF Export for llama.cpp / Ollama
-    active_preset = "500m"
-    try:
-        import yaml
-        with open("config.yaml", "r", encoding="utf-8") as f:
-            c = yaml.safe_load(f)
-            active_preset = c.get("model", {}).get("preset", "500M").lower()
-    except Exception:
-        pass
-    gguf_output = os.path.join("output", f"tunisiallm-{active_preset}-f16.gguf")
-    subprocess.run([
-        sys.executable, "-u", "export_gguf.py",
-        "--checkpoint", ckpt_target,
-        "--tokenizer", "tokenizer.json",
-        "--output", gguf_output,
-        "--dtype", "f16"
-    ])
+        # GGUF Export for llama.cpp / Ollama
+        active_preset = "500m"
+        try:
+            import yaml
+            with open("config.yaml", "r", encoding="utf-8") as f:
+                c = yaml.safe_load(f)
+                active_preset = c.get("model", {}).get("preset", "500M").lower()
+        except Exception:
+            pass
+        gguf_output = os.path.join("output", f"tunisiallm-{active_preset}-f16.gguf")
+        subprocess.run([
+            sys.executable, "-u", "export_gguf.py",
+            "--checkpoint", ckpt_target,
+            "--tokenizer", "tokenizer.json",
+            "--output", gguf_output,
+            "--dtype", "f16"
+        ])
+    else:
+        print("[!] Warning: No checkpoint available to export.")
 
     # 8. Step 5: Verification & Benchmark Suite
     print("\n" + "=" * 80)
@@ -230,17 +240,20 @@ def main() -> None:
         ("Arabizi Question", "kifech na3mel fonction fi python?")
     ]
 
-    for label, prompt in test_prompts:
-        print(f"\n[{label}] User: {prompt}")
-        print("Assistant: ", end="", flush=True)
-        subprocess.run([
-            sys.executable, "-u", "07_inference.py",
-            "--config", "config.yaml",
-            "--checkpoint", ckpt_target,
-            "--prompt", prompt,
-            "--temperature", str(args.temperature),
-            "--top-k", str(args.top_k)
-        ])
+    if os.path.isfile(ckpt_target):
+        for label, prompt in test_prompts:
+            print(f"\n[{label}] User: {prompt}")
+            print("Assistant: ", end="", flush=True)
+            subprocess.run([
+                sys.executable, "-u", "07_inference.py",
+                "--config", "config.yaml",
+                "--checkpoint", ckpt_target,
+                "--prompt", prompt,
+                "--temperature", str(args.temperature),
+                "--top-k", str(args.top_k)
+            ])
+    else:
+        print("[!] Benchmark skipped: Checkpoint not found.")
 
     # 9. Step 6: 1-Click Packaging for Download
     print("\n" + "=" * 80)

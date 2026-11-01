@@ -22,6 +22,8 @@ def generate_multiturn_dialogues(num_dialogues: int = 150) -> List[Dict]:
     dialogues = []
 
     items = [
+        ("طماطم", "tmatem", "حكوك", 1500),
+        ("طماطم", "tmatem", "حكوك", 2500),
         ("طماطم", "tmatem", "كيلو", 1500),
         ("بطاطا", "batata", "كيلو", 1200),
         ("بصل", "bsal", "كيلو", 800),
@@ -31,10 +33,40 @@ def generate_multiturn_dialogues(num_dialogues: int = 150) -> List[Dict]:
     ]
 
     for _ in range(num_dialogues):
-        mode = rng.choice(["shopping", "coding", "food", "travel", "arabizi"])
+        mode = rng.choice(["shopping", "shopping_correction", "coding", "food", "travel", "arabizi"])
         sys_p = rng.choice(SYSTEM_PROMPTS)
 
-        if mode == "shopping":
+        if mode == "shopping_correction":
+            i1, _, u1, p1 = rng.choice(items)
+            q1 = 3
+            res1 = q1 * p1
+            d1 = res1 // 1000
+            m1 = res1 % 1000
+
+            dialogues.append({
+                "system": sys_p,
+                "turns": [
+                    {
+                        "role": "user",
+                        "content": f"عندي {q1} {u1} {i1} الحكة الواحدة ب {p1} قدّاش يجيو ثلاثة حقوق مع بعضهم؟"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": f"<tool_call>calc: {q1} * {p1}</tool_call><tool_result>{res1}</tool_result>النتيجة هي {res1} مليم (يعني {d1} دينارات و {m1} مليم) يا باهي."
+                    },
+                    {
+                        "role": "user",
+                        "content": "كيفاش نعملوا فونكسيون في بايثون"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "باش تعمل فونكسيون (function) في بايثون، تستعمل الكلمة def كيما هكا:\n```python\ndef ejma3(a, b):\n    return a + b\n```\nومن بعد تعيطلها: `print(ejma3(5, 3))` وتخرجلك 8 يا باهي."
+                    }
+                ],
+                "category": "multiturn_mixed"
+            })
+
+        elif mode == "shopping":
             i1, _, u1, p1 = rng.choice(items)
             q1 = rng.randint(2, 4)
             res1 = q1 * p1

@@ -63,6 +63,26 @@ def generate_dpo_pairs() -> List[Dict[str, str]]:
     # Domain 2: Coding Instructions (Code Answer vs Empty Greeting)
     coding_cases = [
         (
+            "كيفاش نعملوا فونكسيون في بايثون",
+            "باش تعمل فونكسيون (function) في بايثون، تستعمل def كيما هكا:\n```python\ndef ejma3(a, b):\n    return a + b\n```\nومن بعد تعيطلها هكا: `print(ejma3(5, 3))` وتخرجلك 8 يا باهي.",
+            "عسلامة يا باهي! الحمد لله كل شي مريقل، شنوة أحوالك إنت وكيفاش نجم نعاونك اليوم؟"
+        ),
+        (
+            "قداش ثلاثه حكوك طماطم الحكه الواحده ب 1500",
+            "<tool_call>calc: 3 * 1500</tool_call><tool_result>4500</tool_result>يجيو 4500 مليم (يعني 4 دينارات و 500 مليم) يا باهي.",
+            "الحمد لله ونشكروه، ديما في الخدمة بكل فرحة، شنوة سؤالك اليوم؟"
+        ),
+        (
+            "عندي طماطم الحكه الواحده ب 2500 قداش يجيو ثلاثه",
+            "<tool_call>calc: 3 * 2500</tool_call><tool_result>7500</tool_result>النتيجة هي 7500 مليم (7 دينارات و 500 مليم) يا باهي.",
+            "<tool_call>calc: 2500 + 2500</tool_call><tool_result>5000</tool_result>النتيجة هي 5000 يا باهي."
+        ),
+        (
+            "لا لا عندي ثلاثه حكوك طماطم مش روز ثلاثه",
+            "<tool_call>calc: 3 * 1500</tool_call><tool_result>4500</tool_result>سامحني يا غالي، عندك الحق! على 3 حكوك تطلع 4500 مليم (4 دينارات و 500 مليم).",
+            "الحمد لله ونشكروه، ديما في الخدمة بكل فرحة، شنوة سؤالك اليوم؟"
+        ),
+        (
             "كيفاش نعمل حلقة تكرار for في بايثون؟",
             "باش تعمل حلقة تكرار for في بايثون، تستعمل range():\n```python\nfor i in range(5):\n    print(i)\n```\nالكود هذا يدور 5 مرات ويطبع الأرقام من 0 لـ 4 يا باهي.",
             "Ahla bik ya ghali! Labes el 7amdoullah, nchallah inti zeda cava w mrigel."
@@ -238,6 +258,9 @@ def train_dpo(
     device = torch.device(device_str)
     tokenizer = Tokenizer.from_file(tokenizer_path)
 
+    ckpt = torch.load(checkpoint_path, map_location=device)
+    state = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
+
     try:
         conf = load_config("config.yaml")
         preset = conf.get("model", {}).get("preset", "500M")
@@ -245,18 +268,29 @@ def train_dpo(
     except Exception:
         preset = "500M"
         vocab_size = 16384
+
+    # Detect preset from checkpoint weights to prevent size mismatch
+    if "tok_embeddings.weight" in state:
+        emb_dim = state["tok_embeddings.weight"].shape[1]
+        if emb_dim == 1280:
+            preset = "500M"
+        elif emb_dim == 768:
+            preset = "125M"
+        elif emb_dim == 672:
+            preset = "80M"
+        elif emb_dim == 448:
+            preset = "30M"
+
     cfg = ModelConfig.from_preset(preset, vocab_size=vocab_size, max_seq_len=256)
 
     # Load Policy Model
-    print(f"[*] Loading Policy Model (pi_theta) from {checkpoint_path}...", flush=True)
+    print(f"[*] Loading Policy Model (pi_theta, {preset}) from {checkpoint_path}...", flush=True)
     policy_model = TunisiaLLM(cfg).to(device)
-    ckpt = torch.load(checkpoint_path, map_location=device)
-    state = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
     policy_model.load_state_dict(state, strict=False)
     policy_model.train()
 
     # Load Frozen Reference Model (pi_ref)
-    print(f"[*] Loading Reference Model (pi_ref)...", flush=True)
+    print(f"[*] Loading Reference Model (pi_ref, {preset})...", flush=True)
     ref_model = TunisiaLLM(cfg).to(device)
     ref_model.load_state_dict(state, strict=False)
     ref_model.eval()
