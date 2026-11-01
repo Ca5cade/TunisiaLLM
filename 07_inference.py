@@ -125,8 +125,9 @@ def extract_math_subexpression(expr_str: str) -> Optional[str]:
 
 
 def extract_shopping_operands(prompt: str) -> Optional[Tuple[float, float]]:
-    """Extract quantity and price from Tunisian shopping prompts."""
-    digits = [float(x) for x in re.findall(r'\b\d+(?:\.\d+)?\b', prompt)]
+    """Extract quantity and price from Tunisian shopping prompts, handling negations like 'مش زوز'."""
+    p_clean = re.sub(r'مش\s+(?:واحد|واحدة|وحده|زوز|ثنين|إثنين|اثنان|ثلاثة|ثلاثه|أربعة|اربعة|خمسة|ستة|سبعة|ثمانية|تسعة|عشرة|\d+)', '', prompt)
+    digits = [float(x) for x in re.findall(r'\b\d+(?:\.\d+)?\b', p_clean)]
     word_quantities = []
     qty_words = {
         "زوز": 2, "ثنين": 2, "إثنين": 2, "اثنان": 2,
@@ -136,7 +137,7 @@ def extract_shopping_operands(prompt: str) -> Optional[Tuple[float, float]]:
         "ستة": 6, "سبعة": 7, "ثمانية": 8, "تسعة": 9, "عشرة": 10
     }
     for w, val in qty_words.items():
-        if w in prompt:
+        if w in p_clean:
             word_quantities.append(float(val))
 
     all_nums = digits + word_quantities
@@ -172,7 +173,7 @@ def sanitize_tool_math_expr(expr_str: str, user_prompt: Optional[str] = None) ->
             m = re.match(pat, cleaned)
             if m:
                 cleaned = m.group(1).replace('x', '*').replace('X', '*').strip()
-            elif not cand or not any(c.isdigit() for c in cleaned) or ("*" in cleaned and q_str not in cleaned):
+            elif q_str not in cleaned or ("*" in cleaned and q_str not in cleaned) or ("+" in cleaned and q_str != "2"):
                 cleaned = f"{q_str} * {p_str}"
 
     return cleaned
@@ -405,27 +406,47 @@ class TunisiaLLMInference:
     def stream_generate(
         self,
         prompt: str,
-        system_prompt: str = "إنت مساعد ذكي ولطيف بالدارجة التونسية، تعاون بوضوح وطلاقة وتجاوب ديما على قد السؤال.",
+        system_prompt: str = "إنت مساعد ذكي ولطيف، تحكي بالدارجة التونسية بطلاقة وتجاوب بوضوح وبكل احترام.",
         max_new_tokens: int = 256,
         temperature: float = 0.2,
         top_p: float = 0.85,
         top_k: int = 40,
-        repetition_penalty: float = 1.2
+        repetition_penalty: float = 1.2,
+        chat_history: Optional[List[Dict[str, str]]] = None
     ) -> Generator[str, None, None]:
         """
-        Stream generated tokens with KV cache and automated tool-execution loop.
+        Stream generated tokens with KV cache, multi-turn context, and automated tool-execution loop.
         """
-        full_prompt = f"<bos><|system|>\n{system_prompt}\n<|user|>\n{prompt}\n<|assistant|>\n"
+        effective_prompt = prompt
+        if chat_history and len(chat_history) > 1:
+            full_prompt = f"<bos><|system|>\n{system_prompt}\n"
+            prev_turns = chat_history[:-1] if chat_history[-1].get("content") == prompt else chat_history
+            for t in prev_turns[-4:]:
+                r = t.get("role")
+                c = t.get("content", "").strip()
+                if not c:
+                    continue
+                if r == "user":
+                    full_prompt += f"<|user|>\n{c}\n"
+                elif r == "assistant":
+                    full_prompt += f"<|assistant|>\n{c}<eos>\n"
+            full_prompt += f"<|user|>\n{prompt}\n<|assistant|>\n"
+
+            prev_user_texts = [t.get("content", "") for t in prev_turns if t.get("role") == "user"]
+            if prev_user_texts:
+                effective_prompt = f"{prev_user_texts[-1]} {prompt}"
+        else:
+            full_prompt = f"<bos><|system|>\n{system_prompt}\n<|user|>\n{prompt}\n<|assistant|>\n"
         
         # Check if the prompt is asking about a known Tunisian cultural/historical fact
         topic, fact = find_tunisian_fact(prompt)
-        if topic and fact and not is_math_query(prompt):
+        if topic and fact and not is_math_query(effective_prompt):
             # Pre-inject knowledge retrieval via search tool call so model provides rich, accurate answer!
             clean_call = f"{self.tool_call_start}search: {topic}{self.tool_call_end}"
             clean_res = f"{self.tool_result_start}{fact}{self.tool_result_end}"
             yield f"{clean_call}{clean_res}"
 
-            full_prompt = f"<bos><|system|>\n{system_prompt}\n<|user|>\n{prompt}\n<|assistant|>\n{clean_call}{clean_res}"
+            full_prompt = f"{full_prompt}{clean_call}{clean_res}"
             input_ids = self.tokenizer.encode(full_prompt).ids
             self.model.reset_cache()
             cur_pos = len(input_ids)
@@ -491,7 +512,7 @@ class TunisiaLLMInference:
 
                     if cmd_full.startswith("calc:"):
                         raw_math = cmd_full[len("calc:"):].strip()
-                        clean_math = sanitize_tool_math_expr(raw_math, prompt)
+                        clean_math = sanitize_tool_math_expr(raw_math, effective_prompt)
                         cmd_full = f"calc: {clean_math}"
                         tool_res = execute_safe_calc(clean_math)
                     elif cmd_full.startswith("search:"):

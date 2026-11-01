@@ -114,12 +114,13 @@ async def chat_endpoint(req: ChatRequest):
         try:
             tokens_stream = engine.stream_generate(
                 prompt=user_prompt,
-                system_prompt=req.system_prompt or "إنت مساعد ذكي ولطيف بالدارجة التونسية، تعاون بوضوح وطلاقة وتجاوب ديما على قد السؤال.",
+                system_prompt=req.system_prompt or "إنت مساعد ذكي ولطيف، تحكي بالدارجة التونسية بطلاقة وتجاوب بوضوح وبكل احترام.",
                 max_new_tokens=req.max_new_tokens or 256,
                 temperature=req.temperature if req.temperature is not None else 0.2,
                 top_p=req.top_p if req.top_p is not None else 0.85,
                 top_k=40,
-                repetition_penalty=req.repetition_penalty if req.repetition_penalty is not None else 1.2
+                repetition_penalty=req.repetition_penalty if req.repetition_penalty is not None else 1.2,
+                chat_history=req.chat_history
             )
 
             for token in tokens_stream:
