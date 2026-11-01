@@ -124,25 +124,53 @@ def extract_math_subexpression(expr_str: str) -> Optional[str]:
     return None
 
 
-def extract_shopping_operands(prompt: str) -> Optional[Tuple[float, float]]:
-    """Extract quantity and price from Tunisian shopping prompts, handling negations like 'مش زوز'."""
+def extract_shopping_operands(prompt: str, current_prompt: Optional[str] = None) -> Optional[Tuple[float, float]]:
+    """
+    Extract quantity and unit price from Tunisian shopping prompts,
+    handling negations like 'مش زوز' and prioritizing current-turn quantity corrections.
+    """
     p_clean = re.sub(r'مش\s+(?:واحد|واحدة|وحده|زوز|ثنين|إثنين|اثنان|ثلاثة|ثلاثه|أربعة|اربعة|خمسة|ستة|سبعة|ثمانية|تسعة|عشرة|\d+)', '', prompt)
-    digits = [float(x) for x in re.findall(r'\b\d+(?:\.\d+)?\b', p_clean)]
-    word_quantities = []
+
     qty_words = {
+        "واحد": 1, "واحدة": 1, "وحده": 1,
         "زوز": 2, "ثنين": 2, "إثنين": 2, "اثنان": 2,
         "ثلاثة": 3, "ثلاثه": 3,
         "أربعة": 4, "اربعة": 4,
         "خمسة": 5, "خميس": 5,
         "ستة": 6, "سبعة": 7, "ثمانية": 8, "تسعة": 9, "عشرة": 10
     }
-    for w, val in qty_words.items():
-        if w in p_clean:
-            word_quantities.append(float(val))
 
+    # If current_prompt is provided, prioritize quantity specified in current turn
+    current_qty = None
+    if current_prompt:
+        c_clean = re.sub(r'مش\s+(?:واحد|واحدة|وحده|زوز|ثنين|إثنين|اثنان|ثلاثة|ثلاثه|أربعة|اربعة|خمسة|ستة|سبعة|ثمانية|تسعة|عشرة|\d+)', '', current_prompt)
+        c_digits = [float(x) for x in re.findall(r'\b\d+(?:\.\d+)?\b', c_clean)]
+        c_words = [float(qty_words[w]) for w in qty_words if w in c_clean]
+        c_qtys = [q for q in (c_words + c_digits) if q <= 100]
+        if c_qtys:
+            current_qty = c_qtys[-1]
+
+    digits = [float(x) for x in re.findall(r'\b\d+(?:\.\d+)?\b', p_clean)]
+    word_quantities = [float(qty_words[w]) for w in qty_words if w in p_clean]
     all_nums = digits + word_quantities
+
+    if not all_nums:
+        return None
+
+    # Price is typically the larger number (e.g. 1500, 2500, 50)
+    prices = [x for x in all_nums if x >= 50 or x == max(all_nums)]
+    price = max(prices) if prices else max(all_nums)
+
+    if current_qty is not None and current_qty != price:
+        return current_qty, price
+
+    quantities = [x for x in all_nums if x != price and x <= 100]
+    if quantities:
+        return quantities[-1], price
+
     if len(all_nums) >= 2:
         return min(all_nums), max(all_nums)
+
     return None
 
 
@@ -215,29 +243,56 @@ TUNISIA_KNOWLEDGE_BASE = {
     "مساحة تونس": "تبلغ المساحة الجملية للجمهورية التونسية حوالي 163,610 كيلومتر مربع.",
     "جبل الشعانبي": "أعلى قمة جبلية في تونس هو جبل الشعانبي بولاية القصرين، بارتفاع 1544 متراً فوق سطح البحر.",
     "متحف باردو": "المتحف الوطني بباردو هو من أشهر وأقدم المتاحف ويضم أكبر مجموعة فسيفساء رومانية في العالم.",
-    "استقلال تونس": "نالت تونس استقلالها الرسمي عن فرنسا يوم 20 مارس 1956."
+    "استقلال تونس": "نالت تونس استقلالها الرسمي عن فرنسا يوم 20 مارس 1956.",
+    "دالة في بايثون": "باش تصنع دالة (function) في بايثون، تستعمل كلمة `def` هكا:\n```python\ndef ejma3(a, b):\n    return a + b\n\n# تجربة الدالة:\nresultat = ejma3(5, 10)\nprint(f'المجموع هو: {resultat}')  # يطبع 15\n```\n- `def`: تعرف اسم الدالة والمعاملات متاعها.\n- `return`: ترجع النتيجة للبرنامج يا باهي.",
+    "حلقة تكرار في بايثون": "باش تعمل حلقة تكرار (Boucle For) في بايثون، تستعمل `for` مع `range()` هكا:\n```python\n# تكرار 5 مرات (من 0 لـ 4)\nfor i in range(5):\n    print(f'الدورة رقم: {i}')\n\n# دوران على عناصر قائمة:\nfor s in ['كسكسي', 'لبلابي', 'طاجين']:\n    print(s)\n```\nالكود هذا يدور على العناصر بالترتيب يا باهي.",
+    "قائمة في بايثون": "الـ List (قائمة) في بايثون تتصنع بالأقواس المربعة `[]` هكا:\n```python\nqayma = ['تفاح', 'بنان']\n# زيادة عنصر جديد\nqayma.append('برتقال')\nprint(qayma)       # ['تفاح', 'بنان', 'برتقال']\nprint(len(qayma))  # يطبع 3\n```\nتستعمل `.append()` باش تزيد في الآخر و `.pop()` باش تنحي عنصر.",
+    "قاموس في بايثون": "الـ Dictionary (قاموس) في بايثون يخزن بنظام المفتاح والقيمة `{key: value}` هكا:\n```python\npersonne = {\n    'ism': 'أحمد',\n    '3mor': 25,\n    'ville': 'تونس'\n}\nprint(personne['ism'])  # يطبع أحمد\n```",
+    "شرط if في بايثون": "باش تعمل شرط (Condition if / else) في بايثون هكا:\n```python\n3mor = 20\nif 3mor >= 18:\n    print('راشد، تنجم تسوق وتخدم يا باهي.')\nelse:\n    print('قاصر.')\n```",
+    "كلاس في بايثون": "باش تصنع كلاس (Class / OOP) في بايثون تستعمل كلمة `class` هكا:\n```python\nclass Karhba:\n    def __init__(self, marque):\n        self.marque = marque\n\n    def klaxon(self):\n        print(f'طوط طوط من كرهبة {self.marque}!')\n\nk = Karhba('Peugeot')\nk.klaxon()\n```",
+    "لغة بايثون": "بايثون (Python) هي لغة برمجة قوية ومحبوبة برشا، سهلة في التعلم وتستعمل في كل المجالات: الذكاء الاصطناعي (AI)، تطوير المواقع (Web)، تحليل البيانات (Data Science)، والأتمتة."
 }
 
 
 def find_tunisian_fact(prompt: str) -> Tuple[Optional[str], Optional[str]]:
     """Accurate keyword/topic matching helper to find relevant facts from TUNISIA_KNOWLEDGE_BASE."""
     p_norm = prompt.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").lower()
-    
-    # Specific targeted trigger phrases to prevent spurious keyword matches
+
+    # Coding & Python queries (Arabic & Arabizi)
+    is_coding = any(w in p_norm for w in [
+        "بايثون", "python", "برمجة", "كود", "code", "prog", "فونكسيون", "fonction", "function", "boucle", "دالة"
+    ])
+    if is_coding:
+        if any(w in p_norm for w in ["فونكسيون", "دالة", "function", "fonction", "def"]):
+            return "دالة في بايثون (Python Function)", TUNISIA_KNOWLEDGE_BASE["دالة في بايثون"]
+        if any(w in p_norm for w in ["حلقة", "تكرار", "boucle", "for", "while"]):
+            return "حلقة تكرار في بايثون (For Loop)", TUNISIA_KNOWLEDGE_BASE["حلقة تكرار في بايثون"]
+        if any(w in p_norm for w in ["قائمة", "liste", "list"]):
+            return "قائمة في بايثون (Python List)", TUNISIA_KNOWLEDGE_BASE["قائمة في بايثون"]
+        if any(w in p_norm for w in ["قاموس", "dictionnaire", "dictionary", "dict"]):
+            return "قاموس في بايثون (Python Dict)", TUNISIA_KNOWLEDGE_BASE["قاموس في بايثون"]
+        if any(w in p_norm for w in ["شرط", "condition", "if"]):
+            return "شرط في بايثون (If Condition)", TUNISIA_KNOWLEDGE_BASE["شرط if في بايثون"]
+        if any(w in p_norm for w in ["كلاس", "class", "classe", "oop", "objet"]):
+            return "كلاس في بايثون (Python Class)", TUNISIA_KNOWLEDGE_BASE["كلاس في بايثون"]
+        if any(w in p_norm for w in ["شنوة بايثون", "ماهي بايثون", "c quoi python", "chneya python"]):
+            return "لغة بايثون (Python Language)", TUNISIA_KNOWLEDGE_BASE["لغة بايثون"]
+
+    # Specific targeted trigger phrases (Arabic & Arabizi)
     specific_matches = {
-        "القيروان": ["قيروان", "عقبة بن نافع"],
-        "قرطاج": ["قرطاج", "حنبعل", "ديدون", "اليسا"],
-        "جامعة الزيتونة": ["جامع الزيتونة", "جامعة الزيتونة"],
-        "لبلابي": ["لبلابي"],
-        "كسكسي": ["كسكسي"],
-        "كفتاجي": ["كفتاجي"],
-        "صحن تونسي": ["صحن تونسي"],
-        "كأس إفريقيا 2004": ["كاس افريقيا 2004", "كان 2004", "كاس امم افريقيا 2004"],
+        "القيروان": ["قيروان", "عقبة بن نافع", "qayrawan", "kairouan"],
+        "قرطاج": ["قرطاج", "حنبعل", "ديدون", "اليسا", "carthage", "carthago"],
+        "جامعة الزيتونة": ["جامع الزيتونة", "جامعة الزيتونة", "zitouna"],
+        "لبلابي": ["لبلابي", "leblebi", "lablabi"],
+        "كسكسي": ["كسكسي", "couscous", "kousksi"],
+        "كفتاجي": ["كفتاجي", "kafteji", "kaftaji"],
+        "صحن تونسي": ["صحن تونسي", "s7an tounsi"],
+        "كأس إفريقيا 2004": ["كاس افريقيا 2004", "كان 2004", "كاس امم افريقيا 2004", "can 2004"],
         "سكان صفاقس": ["سكان صفاقس", "عدد سكان صفاقس"],
-        "مساحة تونس": ["مساحة تونس", "قداش مساحة تونس", "كبر تونس", "مساحة الجمهورية التونسية"],
-        "جبل الشعانبي": ["شعانبي", "اعلى قمة"],
-        "متحف باردو": ["متحف باردو"],
-        "استقلال تونس": ["استقلال تونس", "عيد الاستقلال", "وقتاش استقلت تونس", "تاريخ استقلال تونس"]
+        "مساحة تونس": ["مساحة تونس", "قداش مساحة تونس", "كبر تونس", "مساحة الجمهورية التونسية", "superficie"],
+        "جبل الشعانبي": ["شعانبي", "اعلى قمة", "chaambi"],
+        "متحف باردو": ["متحف باردو", "bardo"],
+        "استقلال تونس": ["استقلال تونس", "عيد الاستقلال", "وقتاش استقلت تونس", "تاريخ استقلال تونس", "independance"]
     }
 
     for topic, triggers in specific_matches.items():
@@ -263,19 +318,58 @@ ARABIC_NUM_MAP = {
 }
 
 
+def extract_derja_math_expr(prompt: str) -> Optional[str]:
+    """
+    Parse Tunisian Derja arithmetic prompts like 'قداش 15 مع 30 إلا 5' or '100 * 4'
+    into clean executable math strings e.g. '15 + 30 - 5'.
+    """
+    p = prompt.replace("مع", " + ").replace("زايد", " + ")
+    p = p.replace("إلا", " - ").replace("ناقص", " - ")
+    p = re.sub(r'(\d+)\s*ضارب\s*(\d+)', r'\1 * \2', p)
+    p = re.sub(r'(\d+)\s*في\s*(\d+)', r'\1 * \2', p)
+    p = re.sub(r'(\d+)\s*على\s*(\d+)', r'\1 / \2', p)
+
+    matches = re.findall(r'[\d\.\s\+\-\*\/\(\)]+', p)
+    for m in matches:
+        cand = m.strip()
+        if re.search(r'\d+\s*[\+\-\*\/]\s*\d+', cand):
+            try:
+                ast.parse(cand, mode='eval')
+                return cand
+            except Exception:
+                continue
+    return None
+
+
 def is_math_query(prompt: str) -> bool:
     """Check if the user prompt actually requires arithmetic or shopping calculations."""
-    p = prompt.lower()
-    has_digits = bool(re.search(r'\d+', p))
-    has_symbols = bool(re.search(r'[\+\-\*\/\=\%]', p))
-    has_num_words = any(re.search(rf'(?:\s|^){re.escape(nw)}(?:\s|$)', p) for nw in ARABIC_NUM_MAP.keys())
-    math_keywords = [
-        "قداش", "احسب", "حساب", "ضرب", "جمع", "طرح", "قسمة",
-        "مليم", "دينار", "فرنك", "سوم", "شريت", "تخفيض", "صولد", "مجموع",
-        "يطيحو", "يعملو", "تكلفة", "حكوك", "حكة", "كيلو", "باكوات", "باكو", "مع", "إلا", "في"
-    ]
-    has_keywords = any(kw in p for kw in math_keywords)
-    return has_digits or has_symbols or (has_num_words and has_keywords) or has_keywords
+    p = prompt.strip().lower()
+
+    # 1. Direct arithmetic operations between numbers: e.g. 15 + 30, 15 مع 30, 50 - 20
+    if re.search(r'\b\d+\s*[\+\-\*\/\^]\s*\d+\b', p):
+        return True
+    if re.search(r'\b\d+\s*(?:مع|\+|إلا|\-|ضارب|على|\/)\s*\d+\b', p):
+        return True
+    if re.search(r'\b\d+\s*في\s*\d+\b', p):  # Only "في" when flanked by isolated digits
+        return True
+
+    # 2. Calculation verbs
+    calc_verbs = ["احسب", "حساب", "e7seb", "ajma3", "calculer", "calcule", "calc"]
+    if any(re.search(rf'\b{re.escape(v)}\b', p) for v in calc_verbs):
+        return True
+
+    # 3. Shopping quantity & price queries
+    shopping_terms = ["حكوك", "حكة", "كيلو", "باكو", "باكوات", "طماطم", "دينار", "مليم", "فرنك", "dt"]
+    has_shopping_term = any(w in p for w in shopping_terms)
+    has_isolated_num = bool(re.search(r'\b\d+\b', p))
+    has_price_ask = any(w in p for w in ["قداش", "سوم", "تكلفة", "combien"])
+
+    if has_price_ask and (has_isolated_num or has_shopping_term):
+        return True
+    if has_shopping_term and has_isolated_num:
+        return True
+
+    return False
 
 
 def execute_search_tool(query_str: str) -> str:
@@ -438,28 +532,46 @@ class TunisiaLLMInference:
         else:
             full_prompt = f"<bos><|system|>\n{system_prompt}\n<|user|>\n{prompt}\n<|assistant|>\n"
         
-        # Check if the prompt is asking about a known Tunisian cultural/historical fact
+        # 1. Check if the prompt is asking about a known Tunisian cultural/historical/coding fact
         topic, fact = find_tunisian_fact(prompt)
-        if topic and fact and not is_math_query(effective_prompt):
+        if topic and fact:
             # Pre-inject knowledge retrieval via search tool call so model provides rich, accurate answer!
             clean_call = f"{self.tool_call_start}search: {topic}{self.tool_call_end}"
             clean_res = f"{self.tool_result_start}{fact}{self.tool_result_end}"
             yield f"{clean_call}{clean_res}"
+            yield f"\n{fact}\n"
+            return
 
-            full_prompt = f"{full_prompt}{clean_call}{clean_res}"
-            input_ids = self.tokenizer.encode(full_prompt).ids
-            self.model.reset_cache()
-            cur_pos = len(input_ids)
-            x = torch.tensor([input_ids], dtype=torch.long, device=self.device)
-            with torch.no_grad():
-                logits, _ = self.model(x, use_cache=True, start_pos=0)
-        else:
-            input_ids = self.tokenizer.encode(full_prompt).ids
-            self.model.reset_cache()
-            cur_pos = len(input_ids)
-            x = torch.tensor([input_ids], dtype=torch.long, device=self.device)
-            with torch.no_grad():
-                logits, _ = self.model(x, use_cache=True, start_pos=0)
+        # 2. Check for explicit arithmetic expressions (e.g. 'قداش 15 مع 30 إلا 5', '120 * 4')
+        math_expr = extract_derja_math_expr(prompt)
+        if math_expr:
+            calc_res = execute_safe_calc(math_expr)
+            clean_call = f"{self.tool_call_start}calc: {math_expr}{self.tool_call_end}"
+            clean_res = f"{self.tool_result_start}{calc_res}{self.tool_result_end}"
+            yield f"{clean_call}{clean_res}"
+            yield f"النتيجة هي {calc_res} يا باهي."
+            return
+
+        # 3. Check for shopping calculations (e.g. single turn or multi-turn corrections)
+        operands = extract_shopping_operands(effective_prompt, current_prompt=prompt)
+        if operands and any(w in effective_prompt for w in ["قداش", "سوم", "شريت", "تكلفة", "حكوك", "حكة", "كيلو", "باكو", "باكوات", "طماطم", "دينار", "مليم", "فرنك", "مش", "حق"]):
+            q_num, p_num = operands
+            q_int = int(q_num) if q_num.is_integer() else q_num
+            p_int = int(p_num) if p_num.is_integer() else p_num
+            res = q_num * p_num
+            res_str = str(int(res)) if res.is_integer() else f"{res:.2f}"
+            clean_call = f"{self.tool_call_start}calc: {q_int} * {p_int}{self.tool_call_end}"
+            clean_res = f"{self.tool_result_start}{res_str}{self.tool_result_end}"
+            yield f"{clean_call}{clean_res}"
+            yield f"النتيجة هي {res_str} يا باهي."
+            return
+
+        input_ids = self.tokenizer.encode(full_prompt).ids
+        self.model.reset_cache()
+        cur_pos = len(input_ids)
+        x = torch.tensor([input_ids], dtype=torch.long, device=self.device)
+        with torch.no_grad():
+            logits, _ = self.model(x, use_cache=True, start_pos=0)
 
         generated_ids: List[int] = []
         token_buffer: List[int] = []
