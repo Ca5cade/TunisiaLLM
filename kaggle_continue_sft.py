@@ -198,7 +198,15 @@ def main() -> None:
     ])
 
     # GGUF Export for llama.cpp / Ollama
-    gguf_output = os.path.join("output", "tunisiallm-80m-f16.gguf")
+    active_preset = "500m"
+    try:
+        import yaml
+        with open("config.yaml", "r", encoding="utf-8") as f:
+            c = yaml.safe_load(f)
+            active_preset = c.get("model", {}).get("preset", "500M").lower()
+    except Exception:
+        pass
+    gguf_output = os.path.join("output", f"tunisiallm-{active_preset}-f16.gguf")
     subprocess.run([
         sys.executable, "-u", "export_gguf.py",
         "--checkpoint", ckpt_target,
@@ -253,7 +261,7 @@ def main() -> None:
             zf.write(ckpt_target, arcname="sft_checkpoint_best.pt")
             print(f"  [+] Checkpoint (PyTorch): {ckpt_target} ({os.path.getsize(ckpt_target) / (1024**2):.1f} MB)")
         if os.path.isfile(gguf_output):
-            zf.write(gguf_output, arcname="tunisiallm-80m-f16.gguf")
+            zf.write(gguf_output, arcname=os.path.basename(gguf_output))
             print(f"  [+] GGUF Model (Ollama): {gguf_output} ({os.path.getsize(gguf_output) / (1024**2):.1f} MB)")
         if os.path.isfile(modelfile):
             zf.write(modelfile, arcname="Modelfile")

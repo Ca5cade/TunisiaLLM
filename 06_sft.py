@@ -260,6 +260,7 @@ def train_sft(
         max_seq_len=seq_len
     )
 
+    model_config.gradient_checkpointing = sft_cfg.get("gradient_checkpointing", False) or cfg.get("pretrain", {}).get("gradient_checkpointing", False)
     model = TunisiaLLM(model_config).to(device)
     raw_model = model
 

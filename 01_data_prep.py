@@ -255,22 +255,42 @@ def download_tunisian_datasets(cfg: Dict, force_offline: bool = False) -> Dict[s
 
     for item in cfg["data"]["tunisian_datasets"]:
         name = item["name"]
+        sub_cfg = item.get("config", None)
         split = item.get("split", "train")
         col = item.get("text_column", "text")
 
-        print(f"\n[*] Fetching Tunisian dataset: {name} (split: {split})...")
+        cfg_str = f", config: {sub_cfg}" if sub_cfg else ""
+        print(f"\n[*] Fetching Tunisian dataset: {name}{cfg_str} (split: {split})...")
         downloaded = False
         if HF_DATASETS_AVAILABLE and not force_offline:
             try:
                 split_spec = f"{split}[:1000]" if smoke_test else split
+                load_args = [name]
+                if sub_cfg:
+                    load_args.append(sub_cfg)
                 try:
-                    ds = load_dataset(name, split=split_spec)
+                    ds = load_dataset(*load_args, split=split_spec)
                 except TypeError:
-                    ds = load_dataset(name, split=split_spec, trust_remote_code=True)
+                    ds = load_dataset(*load_args, split=split_spec, trust_remote_code=True)
 
                 for row in ds:
-                    val = row.get(col) or row.get("text") or row.get("content") or row.get("derja")
-                    if val and isinstance(val, str):
+                    val = (
+                        row.get(col) or
+                        row.get(col.strip() if isinstance(col, str) else "") or
+                        row.get("text") or
+                        row.get(" text") or
+                        row.get("content") or
+                        row.get("comment") or
+                        row.get("derja") or
+                        row.get("body")
+                    )
+                    # If Reddit post with title and selftext
+                    if not val and ("title" in row or "selftext" in row):
+                        t = (row.get("title") or "").strip()
+                        s = (row.get("selftext") or "").strip()
+                        val = f"{t}\n{s}".strip() if (t or s) else None
+
+                    if val and isinstance(val, str) and len(val.strip()) > 5:
                         corpus_texts[name].append(val)
                 print(f"    [+] Successfully loaded {len(corpus_texts[name])} rows from {name}")
                 downloaded = True

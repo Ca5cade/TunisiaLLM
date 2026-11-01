@@ -29,20 +29,20 @@ TunisiaLLM/
 
 ---
 
-## 🏗️ Model Architecture (80M Preset)
+## 🏗️ Model Architecture Presets (80M & 500M Scaled)
 
-| Component | Specification | Rationale |
-| :--- | :--- | :--- |
-| **Hidden Dimension ($d_{\text{model}}$)** | 672 | Low latency, compact representation |
-| **Layers ($n_{\text{layers}}$)** | 12 | Deep enough for grammar & dialect structure |
-| **Query Heads ($n_{\text{heads}}$)** | 12 (head dim = 56) | Expressive multi-head attention |
-| **KV Heads ($n_{\text{kv\_heads}}$)** | 4 (Grouped-Query Attn) | 3x memory reduction during KV-cached generation |
-| **Feed-Forward ($d_{\text{hidden}}$)** | 2176 (SwiGLU) | $\sim 3.2 \times d_{\text{model}}$ for non-linear reasoning |
-| **Position Embeddings** | RoPE ($\theta = 10000$) | Relative positional representation up to 1024 tokens |
-| **Layer Normalization** | RMSNorm ($\epsilon = 10^{-5}$) | Faster than LayerNorm, no mean centering/bias |
-| **Weight Tying** | `lm_head == tok_embeddings` | Saves **11.01M parameters** (16,384 $\times$ 672) |
-| **Total Trainable Params** | **78.12M parameters** | Fits effortlessly in fast GPU VRAM |
-| **Attention Kernel** | PyTorch Native SDPA | Native Tensor Core speedup on NVIDIA T4 without compilation |
+| Component | 80M Preset (Edge / Mobile) | **500M Scaled Preset (Power)** | Rationale |
+| :--- | :--- | :--- | :--- |
+| **Hidden Dimension ($d_{\text{model}}$)** | 672 | **1280** | Deep representation capacity for multi-turn reasoning |
+| **Layers ($n_{\text{layers}}$)** | 12 | **24** | 2x depth for complex syntactic and code-switching patterns |
+| **Query Heads ($n_{\text{heads}}$)** | 12 (head dim = 56) | **20 (head dim = 64)** | Power of 2 head dim aligned with Tensor Cores |
+| **KV Heads ($n_{\text{kv\_heads}}$)** | 4 (GQA) | **4 (Grouped-Query Attn, ratio = 5)** | 5x memory reduction during KV-cached generation |
+| **Feed-Forward ($d_{\text{hidden}}$)** | 2176 (SwiGLU) | **4096 (SwiGLU)** | $3.2 \times d_{\text{model}}$ optimal non-linear activation |
+| **Position Embeddings** | RoPE ($\theta = 10000$) | RoPE ($\theta = 10000$) | Relative positional representation up to 1024 tokens |
+| **Layer Normalization** | RMSNorm ($\epsilon = 10^{-5}$) | RMSNorm ($\epsilon = 10^{-5}$) | Fast, bias-free layer normalization |
+| **Weight Tying** | `lm_head == tok_embeddings` | `lm_head == tok_embeddings` | Saves **20.97M parameters** (16,384 $\times$ 1280) |
+| **Total Trainable Params** | **78.12M parameters** | **492.89M parameters** | Maximum model size trainable on free Kaggle 2x T4 GPUs |
+| **Attention Kernel** | PyTorch Native SDPA | PyTorch Native SDPA | Hardware-accelerated without FlashAttention build issues |
 
 ---
 

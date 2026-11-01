@@ -462,17 +462,6 @@ class TunisiaLLMInference:
         self.tool_result_start = "<tool_result>"
         self.tool_result_end = "</tool_result>"
 
-        # Load Model
-        m_cfg = config["model"]
-        preset = m_cfg.get("preset", "80M")
-        model_config = ModelConfig.from_preset(
-            preset,
-            vocab_size=config["tokenizer"]["vocab_size"],
-            max_seq_len=m_cfg.get("max_seq_len", 1024)
-        )
-        self.model = TunisiaLLM(model_config).to(self.device)
-        self.model.eval()
-
         # Find best available checkpoint
         if checkpoint_path is None:
             ckpt_dir = config["paths"]["checkpoint_dir"]
@@ -488,12 +477,37 @@ class TunisiaLLMInference:
                     checkpoint_path = c
                     break
 
+        # Auto-detect architecture preset from checkpoint weights if available
+        m_cfg = config["model"]
+        preset = m_cfg.get("preset", "500M")
+
+        state_dict = None
         if checkpoint_path and os.path.isfile(checkpoint_path):
-            print(f"[*] Loading model weights from: {checkpoint_path}")
             ckpt = torch.load(checkpoint_path, map_location=self.device)
             state_dict = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
+            if "tok_embeddings.weight" in state_dict:
+                emb_dim = state_dict["tok_embeddings.weight"].shape[1]
+                if emb_dim == 1280:
+                    preset = "500M"
+                elif emb_dim == 768:
+                    preset = "125M"
+                elif emb_dim == 672:
+                    preset = "80M"
+                elif emb_dim == 448:
+                    preset = "30M"
+
+        model_config = ModelConfig.from_preset(
+            preset,
+            vocab_size=config["tokenizer"]["vocab_size"],
+            max_seq_len=m_cfg.get("max_seq_len", 1024)
+        )
+        self.model = TunisiaLLM(model_config).to(self.device)
+        self.model.eval()
+
+        if state_dict is not None:
+            print(f"[*] Loading model weights ({preset}) from: {checkpoint_path}")
             self.model.load_state_dict(state_dict, strict=False)
-            print("[OK] Model weights loaded successfully!")
+            print(f"[OK] Model weights ({preset}) loaded successfully!")
         else:
             print("[!] Warning: No checkpoint found. Using randomly initialized model weights.")
 

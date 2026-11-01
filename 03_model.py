@@ -7,7 +7,7 @@ Features:
   - Grouped-Query Attention (GQA) with KV Cache
   - Tied Word Embeddings (tok_embeddings == lm_head)
   - Native PyTorch scaled_dot_product_attention (SDPA) for fast T4 execution without FlashAttention
-  - Presets for 30M, 80M, and 125M parameter configurations
+  - Presets for 30M, 80M, 125M, and 500M parameter configurations
 """
 
 import math
@@ -36,7 +36,13 @@ class ModelConfig:
     gradient_checkpointing: bool = False
 
     @classmethod
-    def from_preset(cls, preset_name: str = "80M", vocab_size: int = 16384, max_seq_len: int = 1024) -> "ModelConfig":
+    def from_preset(
+        cls,
+        preset_name: str = "500M",
+        vocab_size: int = 16384,
+        max_seq_len: int = 1024,
+        gradient_checkpointing: bool = False
+    ) -> "ModelConfig":
         """Factory method for predefined architecture presets matching exact parameter counts."""
         presets = {
             "30M": {
@@ -59,6 +65,13 @@ class ModelConfig:
                 "n_heads": 12,
                 "n_kv_heads": 4,
                 "hidden_dim": 2688,
+            },
+            "500M": {
+                "dim": 1280,
+                "n_layers": 24,
+                "n_heads": 20,
+                "n_kv_heads": 4,
+                "hidden_dim": 4096,
             }
         }
         if preset_name not in presets:
@@ -74,7 +87,7 @@ class ModelConfig:
             max_seq_len=max_seq_len,
             vocab_size=vocab_size,
             tie_word_embeddings=True,
-            gradient_checkpointing=False
+            gradient_checkpointing=gradient_checkpointing
         )
 
 

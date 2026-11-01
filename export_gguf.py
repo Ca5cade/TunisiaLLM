@@ -51,21 +51,47 @@ def export_to_gguf(
     tokens = [t if t is not None else f"<unk_{i}>" for i, t in enumerate(tokens)]
     print(f"[+] Loaded {len(tokens)} tokens.")
 
-    # 3. Initialize GGUF Writer
+    # 3. Detect architecture dimensions dynamically from checkpoint
+    dim = state["tok_embeddings.weight"].shape[1]
+    layer_indices = [int(k.split(".")[1]) for k in state if k.startswith("layers.") and ".attention." in k]
+    n_layers = max(layer_indices) + 1 if layer_indices else 12
+    hidden_dim = state["layers.0.feed_forward.w1.weight"].shape[0] if "layers.0.feed_forward.w1.weight" in state else 2176
+
+    # Infer preset or heads
+    if dim == 1280 and n_layers == 24:
+        model_name = "TunisiaLLM-500M"
+        n_heads = 20
+        n_kv_heads = 4
+    elif dim == 768:
+        model_name = "TunisiaLLM-125M"
+        n_heads = 12
+        n_kv_heads = 4
+    elif dim == 448:
+        model_name = "TunisiaLLM-30M"
+        n_heads = 7
+        n_kv_heads = 1
+    else:
+        model_name = "TunisiaLLM-80M"
+        n_heads = 12
+        n_kv_heads = 4
+
+    head_dim = dim // n_heads
+
+    # Initialize GGUF Writer
     writer = GGUFWriter(output_gguf_path, "llama")
 
     # Metadata
-    writer.add_name("TunisiaLLM-80M")
-    writer.add_description("Tunisian Derja 80M LLaMA decoder with tool calling and DPO alignment")
+    writer.add_name(model_name)
+    writer.add_description(f"Tunisian Derja {model_name} LLaMA decoder with tool calling and DPO alignment")
     writer.add_architecture()
-    writer.add_block_count(12)
+    writer.add_block_count(n_layers)
     writer.add_context_length(1024)
-    writer.add_embedding_length(672)
-    writer.add_feed_forward_length(2176)
-    writer.add_head_count(12)
-    writer.add_head_count_kv(4)
+    writer.add_embedding_length(dim)
+    writer.add_feed_forward_length(hidden_dim)
+    writer.add_head_count(n_heads)
+    writer.add_head_count_kv(n_kv_heads)
     writer.add_layer_norm_rms_eps(1e-5)
-    writer.add_rope_dimension_count(56)
+    writer.add_rope_dimension_count(head_dim)
     writer.add_rope_freq_base(10000.0)
 
     # Special tokens
@@ -86,11 +112,8 @@ def export_to_gguf(
     # Add output weight (tied or explicit)
     if "output.weight" in state:
         tensor_map["output.weight"] = "output.weight"
-    else:
-        # Tied embeddings: output.weight is token_embd.weight
-        pass
 
-    for i in range(12):
+    for i in range(n_layers):
         tensor_map[f"layers.{i}.attention.wq.weight"] = f"blk.{i}.attn_q.weight"
         tensor_map[f"layers.{i}.attention.wk.weight"] = f"blk.{i}.attn_k.weight"
         tensor_map[f"layers.{i}.attention.wv.weight"] = f"blk.{i}.attn_v.weight"

@@ -238,7 +238,14 @@ def train_dpo(
     device = torch.device(device_str)
     tokenizer = Tokenizer.from_file(tokenizer_path)
 
-    cfg = ModelConfig.from_preset("80M", vocab_size=16384, max_seq_len=256)
+    try:
+        conf = load_config("config.yaml")
+        preset = conf.get("model", {}).get("preset", "500M")
+        vocab_size = conf.get("tokenizer", {}).get("vocab_size", 16384)
+    except Exception:
+        preset = "500M"
+        vocab_size = 16384
+    cfg = ModelConfig.from_preset(preset, vocab_size=vocab_size, max_seq_len=256)
 
     # Load Policy Model
     print(f"[*] Loading Policy Model (pi_theta) from {checkpoint_path}...", flush=True)
