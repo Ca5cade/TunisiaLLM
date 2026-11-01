@@ -250,8 +250,68 @@ TUNISIA_KNOWLEDGE_BASE = {
     "قاموس في بايثون": "الـ Dictionary (قاموس) في بايثون يخزن بنظام المفتاح والقيمة `{key: value}` هكا:\n```python\npersonne = {\n    'ism': 'أحمد',\n    '3mor': 25,\n    'ville': 'تونس'\n}\nprint(personne['ism'])  # يطبع أحمد\n```",
     "شرط if في بايثون": "باش تعمل شرط (Condition if / else) في بايثون هكا:\n```python\n3mor = 20\nif 3mor >= 18:\n    print('راشد، تنجم تسوق وتخدم يا باهي.')\nelse:\n    print('قاصر.')\n```",
     "كلاس في بايثون": "باش تصنع كلاس (Class / OOP) في بايثون تستعمل كلمة `class` هكا:\n```python\nclass Karhba:\n    def __init__(self, marque):\n        self.marque = marque\n\n    def klaxon(self):\n        print(f'طوط طوط من كرهبة {self.marque}!')\n\nk = Karhba('Peugeot')\nk.klaxon()\n```",
-    "لغة بايثون": "بايثون (Python) هي لغة برمجة قوية ومحبوبة برشا، سهلة في التعلم وتستعمل في كل المجالات: الذكاء الاصطناعي (AI)، تطوير المواقع (Web)، تحليل البيانات (Data Science)، والأتمتة."
+    "لغة بايثون": "بايثون (Python) هي لغة برمجة قوية ومحبوبة برشا، سهلة في التعلم وتستعمل في كل المجالات: الذكاء الاصطناعي (AI)، تطوير المواقع (Web)، تحليل البيانات (Data Science)، والأتمتة.",
+    "تصييفة في تونس": "في تونس تبارك الله عنا شطوط وبلايص روعة للتصييف:\n1. قليبية والمهدية: أنقى وأصفى بحورات في تونس والبحر بلار والرملة بيضاء (شط المنصورة مصنف عالمياً).\n2. جزيرة جربة: هدوء، شطوط واسعة، ونزل وفنادق ممتازة وتراث فريد.\n3. الحمامات وسوسة: جو شبابي وسهرات بحرية وأوتيلات وتنشيط على مدار الساعة.\n4. طبرقة وغار الملح: تمازج رائع بين الجبل والبحر والغابات والطبيعة العذراء.",
+    "أماكن للزيارة في تونس": "في تونس العاصمة ننصحك تزور:\n- المدينة العربي وجامع الزيتونة والأسواق التقليدية (سوق العطارين، سوق الشواشين).\n- سيدي بوسعيد: ديار زرقاء وبيضاء، القهوة العالية وكعبة بمبالوني سخونة مع المنظر الخلاب للبحر.\n- قرطاج: الآثار البونية والرومانية، والمسرح الأثري والموانئ البونية.\n- متحف باردو: أكبر وأعرق مجموعة فسيفساء رومانية في العالم.",
+    "الجنوب التونسي": "الجنوب التونسي عندو سحر وسكون لا مثيل له:\n- توزر ونفطة: واحات النخيل وشط الجريد ومواقع تصوير فيلم حرب النجوم.\n- مطماطة: منازل الحفر البربرية تحت الأرض (ديار الحوش).\n- تطاوين: القصور الصحراوية العريقة مثل قصر أولاد سلطان والشنني.\n- دوز: بوابة الصحراء التونسية، المهرجان الدولي للصحراء، وركوب الجمال.",
+    "جزيرة جربة": "جربة جزيرة الأحلام، مشهورة بشطوطها الهادية الرملية، حومة السوق والصناعات التقليدية، الغريبة، قرية قلالة لصناعة الفخار، ومتحف جربة هود (Djerbahood) للفنون.",
+    "البريك التونسي": "البريك التونسي من أشهى المقبلات في رمضان وعلى مدار العام، يتعمل بورقة الملسوقة، ويتحشى بالبطاطا المرفوسة، التن، البصل، المعدنوس، الجبن، وعظمة تروب وتتقلى في الزيت السخون.",
+    "الهريسة العربي": "الهريسة العربي التونسية مسجلة في التراث اللامادي لليونسكو! تتصنع من الفلفل الحار المشيح في الشمس، الثوم، الكروية، التابل، وزيت الزيتونة الصافي.",
+    "الطقس في تونس": "الطقس في تونس متوسطي معتدل: مشمس ودافي في الصيف، ولطيف وممطر في الشتاء والربيع. ننصحك ديما بتفقد نشرة الرصد الجوي قبل الخروج."
 }
+
+def get_pure_greeting_response(prompt: str) -> Optional[str]:
+    """Check if prompt is a pure greeting / check-in and return varied, authentic Tunisian Derja greeting."""
+    p = prompt.strip().lower()
+    p_norm = p.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").replace("؟", "").replace("!", "").replace(".", "").strip()
+    
+    # Substantive asks that should not be intercepted as pure greetings
+    has_substantive_ask = any(w in p_norm for w in [
+        "كيفاش", "قداش", "علاش", "وين", "شنوة", "شكون", "وقتاش", "احسب", "كود", "بايثون", "دالة", "حلقة",
+        "طماطم", "كيلو", "حكوك", "دينار", "مليم", "شريت", "سوم", "مساحة", "كسكسي", "لبلابي", "بحر", "نصيف",
+        "kifech", "9adech", "chnawa", "chnouwa", "wa9tech", "win", "chkoun", "python", "code", "calc",
+        "فونكسيون", "fonction", "function", "liste", "boucle", "loop", "عندي"
+    ])
+    if has_substantive_ask:
+        return None
+
+    # Arabic script greetings
+    ar_greetings = [
+        "السلام عليكم", "سلام عليكم", "سلام", "عسلامة", "اهلين", "اهلا", "أهلا", "اهلا وسهلا", "أهلا وسهلا",
+        "صباح الخير", "صباح الورد", "صباح النور", "صباح الفل", "مساء الخير", "مساء النور", "نهارك زين",
+        "شنو احوالك", "شنوة احوالك", "شحالك", "شبيك", "شخبارك", "شنية احوالك", "احوالك", "الحمد لله", "يعطيك الصحة"
+    ]
+    # Latin / French / Arabizi greetings
+    latin_greetings = [
+        "bonjour", "salut", "bonsoir", "coucou", "hello", "hi", "ahla", "ahla bik", "3aslama",
+        "chnawa a7welek", "chnouwa a7welek", "cava", "ça va", "labes", "koll chay mrigel", "ach khbarek",
+        "kollou mrigel", "jawwek behi"
+    ]
+
+    for g in ar_greetings:
+        clean_g = g.replace("أ", "ا").replace("إ", "ا").replace("ة", "ه")
+        if p_norm == clean_g or p_norm.startswith(clean_g + " ") or p_norm.endswith(" " + clean_g):
+            if "صباح" in p_norm:
+                return "صباح الورد والياسمين! نهارك زين ومبروك ومليان خير وبركة. تفضل شنوة سؤالك اليوم وباش نجم نعاونك؟"
+            elif "مساء" in p_norm:
+                return "مساء النور والسرور! مرحباً بيك، ديما في الخدمة بكل فرحة، تفضل شتحب تسأل؟"
+            elif any(w in p_norm for w in ["احوال", "شحالك", "شخبارك"]):
+                return "الحمد لله ونشكروه كل شي مريڤل وعال العال! يعيشك ويسلمك، شنوة أحوالك إنت وتفضل شتحب نساعفك اليوم؟"
+            else:
+                return "وعليكم السلام ورحمة الله وبركاته! أهلاً وسهلاً بيك يا باهي، نهارك زين وسعيد إن شاء الله. تفضل شنوة سؤالك اليوم؟"
+
+    for g in latin_greetings:
+        if p == g or p.startswith(g + " ") or p.endswith(" " + g):
+            if "bonjour" in p:
+                return "Bonjour! Ça va très bien merci, chnouwa najjem n3awnek bih lyoum ya bahi?"
+            elif "bonsoir" in p:
+                return "Bonsoir! Mar7ba bik fi ay wa9t, chnouwa so2alek lyoum?"
+            elif any(w in p for w in ["cava", "ça va", "labes", "a7wel"]):
+                return "Labes el 7amdoullah kol chay mrigel 3al el 3al! Ya3tik essa7a, w inti chnouwa a7welek w kifech najjem n3awnek?"
+            else:
+                return "Ahla bik ya ghali! Mar7ba bik, kol chay mrigel el 7amdoullah. Chnouwa t7eb nsa3fek lyoum?"
+
+    return None
 
 
 def find_tunisian_fact(prompt: str) -> Tuple[Optional[str], Optional[str]]:
@@ -292,7 +352,14 @@ def find_tunisian_fact(prompt: str) -> Tuple[Optional[str], Optional[str]]:
         "مساحة تونس": ["مساحة تونس", "قداش مساحة تونس", "كبر تونس", "مساحة الجمهورية التونسية", "superficie"],
         "جبل الشعانبي": ["شعانبي", "اعلى قمة", "chaambi"],
         "متحف باردو": ["متحف باردو", "bardo"],
-        "استقلال تونس": ["استقلال تونس", "عيد الاستقلال", "وقتاش استقلت تونس", "تاريخ استقلال تونس", "independance"]
+        "استقلال تونس": ["استقلال تونس", "عيد الاستقلال", "وقتاش استقلت تونس", "تاريخ استقلال تونس", "independance"],
+        "تصييفة في تونس": ["تصييفة", "نصيف", "تصييف", "شطوط", "أحسن بحر", "احسن بحر", "plage", "sayyef", "b7ar"],
+        "أماكن للزيارة في تونس": ["نحوس", "بلايص", "نزور", "زيارة", "فسحة", "خرجة", "tounes el 3asma", "سيدي بوسعيد"],
+        "الجنوب التونسي": ["الجنوب", "صحراء", "توزر", "تطاوين", "دوز", "مطماطة", "sahra", "tozeur", "tataouine"],
+        "جزيرة جربة": ["جربة", "djerba", "جرية"],
+        "البريك التونسي": ["بريك", "brik"],
+        "الهريسة العربي": ["هريسة", "harissa"],
+        "الطقس في تونس": ["طقس", "météo", "meteo", "jaw elyoum"]
     }
 
     for topic, triggers in specific_matches.items():
@@ -546,6 +613,12 @@ class TunisiaLLMInference:
         else:
             full_prompt = f"<bos><|system|>\n{system_prompt}\n<|user|>\n{prompt}\n<|assistant|>\n"
         
+        # 0. Check if the prompt is a standalone greeting or check-in
+        greeting_reply = get_pure_greeting_response(prompt)
+        if greeting_reply:
+            yield greeting_reply
+            return
+
         # 1. Check if the prompt is asking about a known Tunisian cultural/historical/coding fact
         topic, fact = find_tunisian_fact(prompt)
         if topic and fact:

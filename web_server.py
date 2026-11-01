@@ -41,7 +41,12 @@ def resolve_checkpoint(custom_path: Optional[str] = None) -> Tuple[str, str]:
     if custom_path and os.path.isfile(custom_path):
         return custom_path, os.path.basename(custom_path)
 
-    # 1. Check in checkpoints directory for clean SFT models
+    # 1. Check inside tunisiallm_refined_model directory (Top Priority)
+    refined_sft = os.path.join(REPO_ROOT, "tunisiallm_refined_model", "sft_checkpoint_best.pt")
+    if os.path.isfile(refined_sft) and os.path.getsize(refined_sft) > 1000000:
+        return refined_sft, "TunisiaLLM Refined Model (Best)"
+
+    # 2. Check in checkpoints directory for clean SFT models
     ckpt_dir = os.path.join(REPO_ROOT, "checkpoints")
     candidates = [
         ("sft_checkpoint_final.pt", "TunisiaLLM SFT (Clean Derja)"),
@@ -54,7 +59,7 @@ def resolve_checkpoint(custom_path: Optional[str] = None) -> Tuple[str, str]:
         if os.path.isfile(full_path) and os.path.getsize(full_path) > 1000000:
             return full_path, label
 
-    # 2. Check inside extracted tunisiallm_model directory
+    # 3. Check inside extracted tunisiallm_model directory
     extracted_sft = os.path.join(REPO_ROOT, "tunisiallm_model", "sft_checkpoint_best.pt")
     if os.path.isfile(extracted_sft) and os.path.getsize(extracted_sft) > 1000000:
         return extracted_sft, "tunisiallm_model (SFT Best)"
